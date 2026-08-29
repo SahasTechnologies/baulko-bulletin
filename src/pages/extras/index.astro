@@ -1,0 +1,52 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import CoverImage from "@/components/ui/CoverImage";
+import DateComponent from "@/components/ui/DateComponent";
+import { getSettings, getAllExtras } from "@/lib/db";
+
+const settings = await getSettings();
+const extras = await getAllExtras();
+---
+
+<BaseLayout title="Extras" settings={settings}>
+  <div class="container mx-auto px-5">
+    <h2 class="mb-8 mt-10 text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:tracking-tighter">
+      <a href="/" class="flex gap-2 sm:gap-3 items-center hover:underline">
+        <img alt="Bulletin logo" class="size-[60px]" height={350} width={350} src="/bulletin.png" />
+        Baulko Bulletin
+      </a>
+    </h2>
+
+    <h1 class="mb-12 text-6xl font-bold leading-tight tracking-tighter md:text-7xl">
+      Extras
+    </h1>
+
+    {extras.length === 0 ? (
+      <p class="text-xl opacity-70">No extras published yet.</p>
+    ) : (
+      <div class="mb-32 grid grid-cols-1 gap-y-20 md:grid-cols-2 md:gap-x-16">
+        {extras.map((extra) => (
+          <article>
+            <a class="group mb-5 block" href={`/extras/${extra.slug}`}>
+              <CoverImage client:load src={extra.cover_image_url} alt={extra.cover_image_alt} />
+            </a>
+            <h3 class="mb-3 text-3xl font-bold leading-snug">
+              <a href={`/extras/${extra.slug}`} class="hover:underline">
+                {extra.title}
+              </a>
+            </h3>
+            <div class="mb-2 text-lg opacity-70">
+              <DateComponent client:load dateString={extra.date} />
+            </div>
+            {extra.author_name && (
+              <p class="mb-2 text-lg opacity-70">by {extra.author_name}</p>
+            )}
+            {extra.excerpt && (
+              <p class="text-lg leading-relaxed">{extra.excerpt}</p>
+            )}
+          </article>
+        ))}
+      </div>
+    )}
+  </div>
+</BaseLayout>

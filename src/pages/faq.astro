@@ -1,0 +1,25 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { getSettings, getPage } from "@/lib/db";
+
+const settings = await getSettings();
+const page = await getPage("faq");
+---
+
+<BaseLayout title={page.title} settings={settings} ogImage={page.og_image_url}>
+  <div class="container mx-auto px-5">
+    <h2 class="mb-8 mt-10 text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:tracking-tighter">
+      <a href="/" class="flex gap-2 sm:gap-3 items-center hover:underline">
+        <img alt="Bulletin logo" class="size-[60px]" height={350} width={350} src="/bulletin.png" />
+        Baulko Bulletin
+      </a>
+    </h2>
+
+    <article>
+      <h1 class="mb-12 text-6xl font-bold leading-tight tracking-tighter md:text-7xl">
+        {page.title}
+      </h1>
+      <div class="prose prose-lg max-w-2xl" set:html={page.body_html} />
+    </article>
+  </div>
+</BaseLayout>

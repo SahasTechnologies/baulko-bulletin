@@ -1,0 +1,73 @@
+---
+import "@/styles/global.css";
+import type { Settings } from "@/types/content";
+
+interface Props {
+  title?: string;
+  description?: string;
+  ogImage?: string | null;
+  settings: Settings;
+}
+
+const { title, description, ogImage, settings } = Astro.props;
+const pageTitle = title ? `${title} | ${settings.title}` : settings.title;
+const pageDescription = description || settings.description;
+---
+
+<!doctype html>
+<html lang="en" class="bg-white text-black">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDescription} />
+    {ogImage && <meta property="og:image" content={ogImage} />}
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDescription} />
+  </head>
+  <body>
+    <section class="min-h-screen">
+      <main>
+        <slot />
+      </main>
+
+      <footer class="px-6">
+        <div class="container mx-auto mb-10 px-10 bg-black/5 rounded-2xl">
+          {settings.footer_html ? (
+            <div
+              class="prose prose-sm text-pretty bottom-0 w-full max-w-none bg-white py-12 text-center md:py-20"
+              set:html={settings.footer_html}
+            />
+          ) : (
+            <div class="flex flex-col items-center py-28 lg:flex-row">
+              <div class="flex flex-col w-full">
+                <h3 class="text-center text-4xl font-bold leading-tight tracking-tighter lg:pr-4 lg:text-left lg:text-5xl">
+                  Join the Bulletin.
+                </h3>
+                <h3 class="mb-10 opacity-70 text-center text-4xl font-bold leading-tight tracking-tighter lg:mb-0 lg:pr-4 lg:text-left lg:text-5xl -translate-y-1">
+                  Thursday lunches in C11
+                </h3>
+              </div>
+              <div class="flex flex-col items-center lg:items-end lg:w-1/2 lg:pl-4">
+                <div class="text-lg opacity-80 pb-2">
+                  For any questions or comments, feel free to
+                </div>
+                <a
+                  href="/contact"
+                  class="mb-2 lg:mb-0 bg-black py-3 px-12 font-bold text-white transition-all hover:scale-110 lg:px-8 text-lg rounded-full"
+                >
+                  Contact Us
+                </a>
+                <div class="flex flex-col items-center lg:items-end text-lg mt-4 opacity-70">
+                  <a href="https://candra.dev" class="opacity-50">Website by Darren Candra</a>
+                  <a href="https://github.com/circles-png" class="opacity-50">Puzzles by Matthew Li</a>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </footer>
+    </section>
+  </body>
+</html>

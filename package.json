@@ -1,0 +1,35 @@
+{
+  "name": "baulko-bulletin",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "astro dev --host",
+    "start": "astro dev --host",
+    "build": "astro build",
+    "preview": "astro preview --host",
+    "astro": "astro",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/react": "^4.4.2",
+    "@astrojs/vercel": "^8.2.10",
+    "@neondatabase/serverless": "^1.0.2",
+    "@tailwindcss/typography": "^0.5.19",
+    "@tailwindcss/vite": "^4.1.13",
+    "astro": "^5.13.10",
+    "date-fns": "^4.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tailwindcss": "^4.1.13"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "typescript": "^5.9.2"
+  }
+}
