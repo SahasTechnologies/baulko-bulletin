@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, Fragment, useRef } from "react";
+import { useState, Fragment } from "react";
 
 export function Unscramble({ puzzle }: {
   puzzle: {

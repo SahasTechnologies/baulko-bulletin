@@ -1,3 +1,5 @@
+import { croppedCoverUrl } from "@/lib/images";
+
 interface CoverImageProps {
   src: string | null | undefined;
   alt?: string | null;
@@ -5,18 +7,24 @@ interface CoverImageProps {
 }
 
 export default function CoverImage({ src, alt, priority }: CoverImageProps) {
-  if (!src) {
-    return <div className="bg-slate-50 rounded-2xl" style={{ paddingTop: "50%" }} />;
+  const url = croppedCoverUrl(src);
+  if (!url) {
+    return (
+      <div
+        className="bg-slate-50 rounded-2xl w-full aspect-[2/1]"
+        aria-hidden="true"
+      />
+    );
   }
 
   return (
     <div className="sm:mx-0">
       <img
-        className="h-auto w-full rounded-2xl"
+        className="w-full aspect-[2/1] object-cover rounded-2xl"
         width={2000}
         height={1000}
         alt={alt || ""}
-        src={src}
+        src={url}
         loading={priority ? "eager" : "lazy"}
       />
     </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, Fragment, useCallback } from "react";
+import { useState } from "react";
 
 export function FindAWord({ puzzle }: {
   puzzle: {

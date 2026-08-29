@@ -2,7 +2,7 @@
 
 Student newspaper of Baulkham Hills High School.
 
-Astro + React islands, Neon Postgres, ImageKit/Filebase URLs for media.
+**Stack:** Astro + React islands, Neon Postgres, ImageKit (images), Filebase (PDFs).
 
 ## Run locally
 
@@ -36,6 +36,11 @@ Run these in the Neon SQL editor, in order:
 3. `neon-contact-table.sql` — contact form inbox
 
 Env var name: **`DATABASE_URL`**
+
+## Media
+
+- **Images** → ImageKit (cover photos, auto-cropped 2:1 like the old site)
+- **PDFs** → Filebase (issue downloads)
 
 ## Contact form
 

@@ -28,11 +28,11 @@ const pageDescription = description || settings.description;
   </head>
   <body>
     <section class="min-h-screen">
-      <main>
+      <main class="pb-16">
         <slot />
       </main>
 
-      <footer class="px-6">
+      <footer class="px-6 mt-8">
         <div class="container mx-auto mb-10 px-10 bg-black/5 rounded-2xl">
           {settings.footer_html ? (
             <div
@@ -55,12 +55,17 @@ const pageDescription = description || settings.description;
                 </div>
                 <a
                   href="/contact"
-                  class="mb-2 lg:mb-0 bg-black py-3 px-12 font-bold text-white transition-all hover:scale-110 lg:px-8 text-lg rounded-full"
+                  class="bg-black py-3 px-12 font-bold text-white transition-all hover:scale-110 lg:px-8 text-lg rounded-full"
                 >
                   Contact Us
                 </a>
-                <div class="flex flex-col items-center lg:items-end text-lg mt-4 opacity-70">
-                  <a href="https://candra.dev" class="opacity-50">Website by Darren Candra</a>
+                <div class="flex flex-col items-center lg:items-end text-lg mt-10 opacity-70 gap-1">
+                  <p class="opacity-50">
+                    Website by
+                    <a href="https://candra.dev" class="underline-offset-2 hover:underline">Darren Candra</a>
+                    &
+                    <a href="https://shimpi.dev" class="underline-offset-2 hover:underline">Sahas Shimpi</a>
+                  </p>
                   <a href="https://github.com/circles-png" class="opacity-50">Puzzles by Matthew Li</a>
                 </div>
               </div>
