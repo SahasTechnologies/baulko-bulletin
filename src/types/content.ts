@@ -1,0 +1,51 @@
+/** Content types that live in Neon */
+
+export interface Post {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  content: string;
+  cover_image_url: string | null;
+  cover_image_alt: string | null;
+  date: string;
+  pdf_url: string | null;
+}
+
+export interface Extra {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  content: string;
+  cover_image_url: string | null;
+  cover_image_alt: string | null;
+  date: string;
+  author_name: string | null; // plain text only
+}
+
+export interface Puzzle {
+  id: string;
+  title: string;
+  type: "Crossword" | "Find-A-Word" | "Unscramble" | string;
+  data: string;
+  date: string;
+  author_name: string | null; // plain text only
+  cover_image_url: string | null;
+  post_id: string | null; // optional link to an issue
+  post_slug?: string | null;
+  post_title?: string | null;
+}
+
+export interface Settings {
+  title: string;
+  description: string;
+  footer_html: string | null;
+  og_image_url: string | null;
+}
+
+export interface PageContent {
+  title: string;
+  body_html: string;
+  og_image_url: string | null;
+}

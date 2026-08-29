@@ -1,0 +1,11 @@
+@import url("https://fonts.googleapis.com/css2?family=Red+Hat+Text:wght@300;400;500;600;700&display=swap");
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+html {
+  font-family: "Red Hat Text", ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  font-family: inherit;
+}
