@@ -1,8 +1,9 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
-import CoverImage from "@/components/ui/CoverImage";
 import DateComponent from "@/components/ui/DateComponent";
-import { getSettings, getPostBySlug } from "@/lib/db";
+import PdfViewer from "@/components/ui/PdfViewer";
+import MoreStories from "@/components/ui/MoreStories";
+import { getSettings, getPostBySlug, getMorePosts } from "@/lib/db";
 
 const { slug } = Astro.params;
 const settings = await getSettings();
@@ -11,6 +12,8 @@ const post = await getPostBySlug(slug!);
 if (!post) {
   return Astro.redirect("/404");
 }
+
+const morePosts = (await getMorePosts(8)).filter((p) => p.id !== post.id).slice(0, 2);
 ---
 
 <BaseLayout title={post.title} description={post.excerpt || undefined} settings={settings} ogImage={post.cover_image_url}>
@@ -18,41 +21,26 @@ if (!post) {
     <h2 class="mb-8 mt-10 text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:tracking-tighter">
       <a href="/" class="flex gap-2 sm:gap-3 items-center hover:underline">
         <img alt="Bulletin logo" class="size-[60px]" height={350} width={350} src="/bulletin.png" />
-        Baulko Bulletin
+        {settings.title}
       </a>
     </h2>
 
     <article>
-      <h1 class="text-balance mb-12 text-6xl font-bold leading-tight tracking-tighter md:text-7xl md:leading-none">
+      <h1 class="text-balance mb-4 text-6xl font-bold leading-tight tracking-tighter md:text-7xl md:leading-none lg:text-8xl">
         {post.title}
       </h1>
-
-      <div class="mb-8 sm:mx-0 md:mb-16">
-        <CoverImage client:load src={post.cover_image_url} alt={post.cover_image_alt} priority />
+      <div class="mb-10 text-lg opacity-70">
+        <DateComponent client:load dateString={post.date} />
       </div>
 
-      <div class="mx-auto max-w-2xl">
-        <div class="mb-6 text-lg opacity-70">
-          <DateComponent client:load dateString={post.date} />
-        </div>
-      </div>
-
-      <div class="mx-auto max-w-2xl">
-        <div class="prose prose-lg max-w-none" set:html={post.content} />
-
-        {post.pdf_url && (
-          <p class="mt-10">
-            <a
-              href={post.pdf_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-block bg-black text-white font-bold py-3 px-8 rounded-full hover:scale-105 transition-transform"
-            >
-              Download full PDF
-            </a>
-          </p>
-        )}
-      </div>
+      {post.pdf_url ? (
+        <PdfViewer client:load src={post.pdf_url} />
+      ) : (
+        <div class="prose prose-lg dark:prose-invert max-w-2xl mx-auto" set:html={post.content} />
+      )}
     </article>
+
+    <hr class="border-black/10 dark:border-white/10 mb-24 mt-28" />
+    <MoreStories client:load posts={morePosts} heading="Recent Issues" />
   </div>
 </BaseLayout>

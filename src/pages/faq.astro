@@ -14,12 +14,11 @@ const page = await getPage("faq");
         Baulko Bulletin
       </a>
     </h2>
-
     <article>
       <h1 class="mb-12 text-6xl font-bold leading-tight tracking-tighter md:text-7xl">
         {page.title}
       </h1>
-      <div class="prose prose-lg max-w-2xl" set:html={page.body_html} />
+      <div class="prose prose-lg dark:prose-invert max-w-2xl" set:html={page.body_html} />
     </article>
   </div>
 </BaseLayout>

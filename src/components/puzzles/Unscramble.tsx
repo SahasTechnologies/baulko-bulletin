@@ -17,7 +17,7 @@ export function Unscramble({ puzzle }: {
             return <Fragment>
               <div className="font-mono">{(index + 1).toString().padStart(2, "0")}</div>
               <div className="text-right font-semibold">{scrambled}</div>
-              <input type="text" className={`shadow rounded border px-2 ${value == unscrambled ? "bg-green-200 border-green-600 text-green-900" : ""}`} onChange={e => { setValue(e.target.value) }} />
+              <input type="text" className={`shadow rounded border px-2 dark:bg-neutral-900 dark:border-white/15 ${value == unscrambled ? "bg-green-200 border-green-600 text-green-900 dark:bg-green-900 dark:border-green-400 dark:text-green-100" : ""}`} onChange={e => { setValue(e.target.value) }} />
             </Fragment>
           }
           return <Line key={index} />

@@ -25,7 +25,7 @@ const sent = Astro.url.searchParams.get("sent") === "1";
     </p>
 
     {sent ? (
-      <div class="rounded-2xl bg-black/5 px-6 py-8 text-lg">
+      <div class="rounded-2xl bg-black/5 dark:bg-white/5 px-6 py-8 text-lg">
         <p class="font-semibold mb-2">Thanks — your message was sent.</p>
         <p class="opacity-70">We'll get back to you if a reply is needed.</p>
         <a href="/contact" class="inline-block mt-6 underline">Send another message</a>
@@ -51,7 +51,7 @@ const sent = Astro.url.searchParams.get("sent") === "1";
             name="name"
             required
             maxlength="200"
-            class="w-full rounded-xl border border-black/15 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30"
+            class="w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30"
           />
         </div>
 
@@ -63,7 +63,7 @@ const sent = Astro.url.searchParams.get("sent") === "1";
             name="email"
             required
             maxlength="320"
-            class="w-full rounded-xl border border-black/15 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30"
+            class="w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30"
           />
         </div>
 
@@ -75,13 +75,13 @@ const sent = Astro.url.searchParams.get("sent") === "1";
             required
             rows="6"
             maxlength="5000"
-            class="w-full rounded-xl border border-black/15 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30"
+            class="w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30"
           ></textarea>
         </div>
 
         <button
           type="submit"
-          class="bg-black text-white font-bold py-3 px-10 rounded-full text-lg transition-transform hover:scale-105"
+          class="bg-black dark:bg-white dark:text-black text-white font-bold py-3 px-10 rounded-full text-lg transition-transform hover:scale-105"
         >
           Send message
         </button>

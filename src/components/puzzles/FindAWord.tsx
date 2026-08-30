@@ -26,7 +26,7 @@ export function FindAWord({ puzzle }: {
             let done = words.map((word: any, index: number) => [word, index]).find(([{ positions }]: any) => positions.length && positions.some(({ x, y }: any) => x + y * width == index))
             return <button
               key={index}
-              className={`aspect-square flex justify-center items-center font-bold size-8 hover:scale-110 transition-all rounded-full active:scale-100 active:bg-blue-200 opacity-100 ${start !== null && start == index ? 'bg-blue-400' : 'hover:bg-slate-200'} ${disabled ? 'text-slate-300' : ''} hover:text-black`}
+              className={`aspect-square flex justify-center items-center font-bold size-8 hover:scale-110 transition-all rounded-full active:scale-100 active:bg-blue-200 dark:active:bg-blue-800 opacity-100 ${start !== null && start == index ? 'bg-blue-400 dark:bg-blue-600' : 'hover:bg-slate-200 dark:hover:bg-white/10'} ${disabled ? 'text-slate-300 dark:text-neutral-600' : ''} hover:text-black dark:hover:text-white`}
               style={done && done[0].positions.length && start === null ? { color: `hsl(${done[1] / words.length}turn 100% 30%)` } : {}}
               onClick={() => {
                 if (start === index) {

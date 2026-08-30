@@ -3,11 +3,12 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 import CoverImage from "@/components/ui/CoverImage";
 import DateComponent from "@/components/ui/DateComponent";
 import MoreStories from "@/components/ui/MoreStories";
-import { getSettings, getLatestPost, getMorePosts } from "@/lib/db";
+import { getSettings, getLatestPost, getMorePosts, getAllExtras } from "@/lib/db";
 
 const settings = await getSettings();
 const heroPost = await getLatestPost();
-const morePosts = await getMorePosts();
+const morePosts = await getMorePosts(100);
+const extras = await getAllExtras();
 ---
 
 <BaseLayout settings={settings}>
@@ -24,12 +25,11 @@ const morePosts = await getMorePosts();
         {settings.title}
       </h1>
       <h2 class="flex flex-col gap-3 text-pretty items-center mt-5 text-center text-lg lg:mt-0 lg:pl-8 lg:text-left lg:items-start">
-        <div class="flex flex-wrap justify-center text-xl gap-8 lg:gap-12 text-center lg:text-left font-medium">
+        <div class="flex text-xl gap-12 text-center lg:text-left font-medium">
           <a class="transition-transform hover:scale-[1.2]" href="/about">About</a>
           <a class="transition-transform hover:scale-[1.2]" href="/faq">FAQ</a>
           <a class="transition-transform hover:scale-[1.2]" href="/join">Join</a>
           <a class="transition-transform hover:scale-[1.2]" href="/puzzles">Puzzles</a>
-          <a class="transition-transform hover:scale-[1.2]" href="/extras">Extras</a>
         </div>
         <p class="text-lg opacity-70">{settings.description}</p>
       </h2>
@@ -61,12 +61,8 @@ const morePosts = await getMorePosts();
           </div>
         </div>
       </article>
-    ) : (
-      <p class="mb-24 text-xl opacity-70 text-center">
-        Issues will appear here once the database is connected.
-      </p>
-    )}
+    ) : null}
 
-    <MoreStories client:load posts={morePosts} />
+    <MoreStories client:load posts={morePosts} extras={extras} heading="Previous Issues" />
   </div>
 </BaseLayout>

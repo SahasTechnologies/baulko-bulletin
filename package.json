@@ -24,6 +24,7 @@
     "@tailwindcss/vite": "^4.1.13",
     "astro": "^7.2.9",
     "date-fns": "^4.1.0",
+    "pdfjs-dist": "^6.2.108",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "tailwindcss": "^4.1.13"
