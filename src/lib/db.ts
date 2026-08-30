@@ -118,7 +118,7 @@ export async function getLatestPost(): Promise<Post | null> {
   }, null);
 }
 
-export async function getMorePosts(limit = 4): Promise<Post[]> {
+export async function getMorePosts(limit = 100): Promise<Post[]> {
   return run(async (sql) => {
     const rows = await sql`SELECT * FROM posts ORDER BY date DESC OFFSET 1 LIMIT ${limit}`;
     return rows.map((row) => mapPost(row as Record<string, unknown>));

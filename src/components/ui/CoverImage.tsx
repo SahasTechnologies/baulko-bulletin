@@ -11,7 +11,7 @@ export default function CoverImage({ src, alt, priority }: CoverImageProps) {
   if (!url) {
     return (
       <div
-        className="bg-slate-50 rounded-2xl w-full aspect-[2/1]"
+        className="bg-slate-50 dark:bg-neutral-800 rounded-2xl w-full aspect-[2/1]"
         aria-hidden="true"
       />
     );

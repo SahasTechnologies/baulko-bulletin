@@ -84,36 +84,42 @@ async function uploadFilebase(buf, key, type) {
 const cache = new Map();
 
 async function migrateUrl(url) {
-  if (!url || !String(url).includes("cdn.sanity.io")) return url;
-  if (cache.has(url)) return cache.get(url);
-  const name = filenameFromUrl(url);
-  const { buf, type } = await download(url);
+  if (!url) return url;
+  const s = String(url);
+  if (!s.includes("cdn.sanity.io")) return s;
+  if (cache.has(s)) return cache.get(s);
+  const name = filenameFromUrl(s);
+  const { buf, type } = await download(s);
   const next =
     type.includes("pdf") || name.toLowerCase().endsWith(".pdf")
       ? await uploadFilebase(buf, `pdfs/${name}`, "application/pdf")
       : await uploadImageKit(buf, name);
-  cache.set(url, next);
-  console.log(url, "->", next);
+  cache.set(s, next);
+  console.log(s, "->", next);
   return next;
 }
 
-const posts = await sql`SELECT id, cover_image_url, pdf_url FROM posts`;
-for (const row of posts) {
-  const cover = await migrateUrl(row.cover_image_url);
-  const pdf = await migrateUrl(row.pdf_url);
-  await sql`UPDATE posts SET cover_image_url = ${cover}, pdf_url = ${pdf} WHERE id = ${row.id}`;
-}
+try {
+  const posts = await sql`SELECT id, cover_image_url, pdf_url FROM posts`;
+  const extras = await sql`SELECT id, cover_image_url FROM extras`;
+  const puzzles = await sql`SELECT id, cover_image_url FROM puzzles`;
+  console.log(`Neon: ${posts.length} posts, ${extras.length} extras, ${puzzles.length} puzzles`);
 
-const extras = await sql`SELECT id, cover_image_url FROM extras`;
-for (const row of extras) {
-  const cover = await migrateUrl(row.cover_image_url);
-  await sql`UPDATE extras SET cover_image_url = ${cover} WHERE id = ${row.id}`;
+  for (const row of posts) {
+    const cover = await migrateUrl(row.cover_image_url);
+    const pdf = await migrateUrl(row.pdf_url);
+    await sql`UPDATE posts SET cover_image_url = ${cover}, pdf_url = ${pdf} WHERE id = ${row.id}`;
+  }
+  for (const row of extras) {
+    const cover = await migrateUrl(row.cover_image_url);
+    await sql`UPDATE extras SET cover_image_url = ${cover} WHERE id = ${row.id}`;
+  }
+  for (const row of puzzles) {
+    const cover = await migrateUrl(row.cover_image_url);
+    await sql`UPDATE puzzles SET cover_image_url = ${cover} WHERE id = ${row.id}`;
+  }
+  console.log("done", cache.size, "files moved");
+} catch (err) {
+  console.error(err);
+  process.exit(1);
 }
-
-const puzzles = await sql`SELECT id, cover_image_url FROM puzzles`;
-for (const row of puzzles) {
-  const cover = await migrateUrl(row.cover_image_url);
-  await sql`UPDATE puzzles SET cover_image_url = ${cover} WHERE id = ${row.id}`;
-}
-
-console.log("done", cache.size, "files");

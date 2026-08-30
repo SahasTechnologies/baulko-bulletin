@@ -2,7 +2,8 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import CoverImage from "@/components/ui/CoverImage";
 import DateComponent from "@/components/ui/DateComponent";
-import { getSettings, getExtraBySlug } from "@/lib/db";
+import MoreStories from "@/components/ui/MoreStories";
+import { getSettings, getExtraBySlug, getMorePosts } from "@/lib/db";
 
 const { slug } = Astro.params;
 const settings = await getSettings();
@@ -11,6 +12,8 @@ const extra = await getExtraBySlug(slug!);
 if (!extra) {
   return Astro.redirect("/404");
 }
+
+const morePosts = await getMorePosts(2);
 ---
 
 <BaseLayout title={extra.title} description={extra.excerpt || undefined} settings={settings} ogImage={extra.cover_image_url}>
@@ -18,28 +21,27 @@ if (!extra) {
     <h2 class="mb-8 mt-10 text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:tracking-tighter">
       <a href="/" class="flex gap-2 sm:gap-3 items-center hover:underline">
         <img alt="Bulletin logo" class="size-[60px]" height={350} width={350} src="/bulletin.png" />
-        Baulko Bulletin
+        {settings.title}
       </a>
     </h2>
-
     <article>
-      <h1 class="text-balance mb-4 text-6xl font-bold leading-tight tracking-tighter md:text-7xl md:leading-none">
+      <h1 class="text-balance mb-4 text-6xl font-bold leading-tight tracking-tighter md:text-7xl md:leading-none lg:text-8xl">
         {extra.title}
       </h1>
       {extra.author_name && (
         <p class="mb-8 text-xl opacity-70">by {extra.author_name}</p>
       )}
-
       <div class="mb-8 sm:mx-0 md:mb-16">
         <CoverImage client:load src={extra.cover_image_url} alt={extra.cover_image_alt} priority />
       </div>
-
       <div class="mx-auto max-w-2xl">
         <div class="mb-6 text-lg opacity-70">
           <DateComponent client:load dateString={extra.date} />
         </div>
-        <div class="prose prose-lg max-w-none" set:html={extra.content} />
+        <div class="prose prose-lg dark:prose-invert max-w-none" set:html={extra.content} />
       </div>
     </article>
+    <hr class="border-black/10 dark:border-white/10 mb-24 mt-28" />
+    <MoreStories client:load posts={morePosts} heading="Recent Issues" />
   </div>
 </BaseLayout>

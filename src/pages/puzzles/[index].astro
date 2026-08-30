@@ -3,7 +3,8 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 import { Crossword } from "@/components/puzzles/Crossword";
 import { FindAWord } from "@/components/puzzles/FindAWord";
 import { Unscramble } from "@/components/puzzles/Unscramble";
-import { getSettings, getPuzzles } from "@/lib/db";
+import MoreStories from "@/components/ui/MoreStories";
+import { getSettings, getPuzzles, getMorePosts } from "@/lib/db";
 
 const { index } = Astro.params;
 const settings = await getSettings();
@@ -15,6 +16,7 @@ if (!puzzle) {
 }
 
 const article = puzzle.type === "Unscramble" ? "an" : "a";
+const morePosts = await getMorePosts(2);
 ---
 
 <BaseLayout title={puzzle.title} settings={settings}>
@@ -25,26 +27,13 @@ const article = puzzle.type === "Unscramble" ? "an" : "a";
         Baulko Bulletin
       </a>
     </h2>
-
     <article>
       <h1 class="text-balance text-6xl font-bold leading-tight tracking-tighter md:text-7xl">
         {puzzle.title}
       </h1>
-      <h2 class="text-balance mb-4 text-xl font-semibold leading-tight tracking-tighter md:text-2xl lg:text-3xl opacity-50">
-        {article} {puzzle.type}
+      <h2 class="text-balance mb-12 text-xl font-semibold leading-tight tracking-tighter md:text-2xl lg:text-3xl opacity-50">
+        {article} {puzzle.type} puzzle, by {puzzle.author_name || "Anonymous"}
       </h2>
-      {(puzzle.author_name || puzzle.post_title) && (
-        <p class="mb-12 text-lg opacity-60">
-          {puzzle.author_name && <span>by {puzzle.author_name}</span>}
-          {puzzle.author_name && puzzle.post_title && <span> · </span>}
-          {puzzle.post_title && puzzle.post_slug && (
-            <a href={`/posts/${puzzle.post_slug}`} class="hover:underline">
-              from {puzzle.post_title}
-            </a>
-          )}
-        </p>
-      )}
-
       {puzzle.type === "Crossword" && (
         <Crossword client:load puzzle={{ data: puzzle.data }} />
       )}
@@ -55,5 +44,7 @@ const article = puzzle.type === "Unscramble" ? "an" : "a";
         <Unscramble client:load puzzle={{ data: puzzle.data }} />
       )}
     </article>
+    <hr class="border-black/10 dark:border-white/10 mb-24 mt-28" />
+    <MoreStories client:load posts={morePosts} heading="Recent Issues" />
   </div>
 </BaseLayout>

@@ -1,6 +1,7 @@
 ---
 import "@/styles/global.css";
 import type { Settings } from "@/types/content";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 
 interface Props {
   title?: string;
@@ -15,7 +16,7 @@ const pageDescription = description || settings.description;
 ---
 
 <!doctype html>
-<html lang="en" class="bg-white text-black">
+<html lang="en" class="bg-white text-black dark:bg-neutral-950 dark:text-neutral-100">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -25,18 +26,29 @@ const pageDescription = description || settings.description;
     {ogImage && <meta property="og:image" content={ogImage} />}
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDescription} />
+    <script is:inline>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          if (t === "dark" || (!t && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
+    <ThemeToggle client:load />
     <section class="min-h-screen">
       <main class="pb-16">
         <slot />
       </main>
 
       <footer class="px-6 mt-8">
-        <div class="container mx-auto mb-10 px-10 bg-black/5 rounded-2xl">
+        <div class="container mx-auto mb-10 px-10 bg-black/5 dark:bg-white/5 rounded-2xl">
           {settings.footer_html ? (
             <div
-              class="prose prose-sm text-pretty bottom-0 w-full max-w-none bg-white py-12 text-center md:py-20"
+              class="prose prose-sm dark:prose-invert text-pretty bottom-0 w-full max-w-none py-12 text-center md:py-20"
               set:html={settings.footer_html}
             />
           ) : (
@@ -55,7 +67,7 @@ const pageDescription = description || settings.description;
                 </div>
                 <a
                   href="/contact"
-                  class="bg-black py-3 px-12 font-bold text-white transition-all hover:scale-110 lg:px-8 text-lg rounded-full"
+                  class="bg-black dark:bg-white dark:text-black py-3 px-12 font-bold text-white transition-all hover:scale-110 lg:px-8 text-lg rounded-full"
                 >
                   Contact Us
                 </a>
