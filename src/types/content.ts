@@ -1,5 +1,3 @@
-/** Content types that live in Neon */
-
 export interface Post {
   id: string;
   title: string;
@@ -21,7 +19,7 @@ export interface Extra {
   cover_image_url: string | null;
   cover_image_alt: string | null;
   date: string;
-  author_name: string | null; // plain text only
+  author_name: string | null;
 }
 
 export interface Puzzle {
@@ -30,9 +28,9 @@ export interface Puzzle {
   type: "Crossword" | "Find-A-Word" | "Unscramble" | string;
   data: string;
   date: string;
-  author_name: string | null; // plain text only
+  author_name: string | null;
   cover_image_url: string | null;
-  post_id: string | null; // optional link to an issue
+  post_id: string | null;
   post_slug?: string | null;
   post_title?: string | null;
 }

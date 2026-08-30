@@ -1,11 +1,3 @@
-/**
- * Data access layer — Neon Postgres.
- * Env var: DATABASE_URL
- *
- * If DATABASE_URL is missing or a query fails, functions return empty/default
- * data so `npm run dev` still works.
- */
-
 import { neon } from "@neondatabase/serverless";
 import type {
   Extra,
@@ -37,7 +29,10 @@ function client() {
   return neon(url);
 }
 
-async function run<T>(fn: (sql: ReturnType<typeof neon>) => Promise<T>, fallback: T): Promise<T> {
+async function run<T>(
+  fn: (sql: ReturnType<typeof neon>) => Promise<T>,
+  fallback: T
+): Promise<T> {
   const sql = client();
   if (!sql) return fallback;
   try {
@@ -48,106 +43,132 @@ async function run<T>(fn: (sql: ReturnType<typeof neon>) => Promise<T>, fallback
   }
 }
 
+function asText(value: unknown): string {
+  if (value == null) return "";
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function mapPost(row: Record<string, unknown>): Post {
+  return {
+    id: asText(row.id),
+    title: asText(row.title),
+    slug: asText(row.slug),
+    excerpt: row.excerpt == null ? null : asText(row.excerpt),
+    content: asText(row.content),
+    cover_image_url: row.cover_image_url == null ? null : asText(row.cover_image_url),
+    cover_image_alt: row.cover_image_alt == null ? null : asText(row.cover_image_alt),
+    date: asText(row.date),
+    pdf_url: row.pdf_url == null ? null : asText(row.pdf_url),
+  };
+}
+
+function mapExtra(row: Record<string, unknown>): Extra {
+  return {
+    id: asText(row.id),
+    title: asText(row.title),
+    slug: asText(row.slug),
+    excerpt: row.excerpt == null ? null : asText(row.excerpt),
+    content: asText(row.content),
+    cover_image_url: row.cover_image_url == null ? null : asText(row.cover_image_url),
+    cover_image_alt: row.cover_image_alt == null ? null : asText(row.cover_image_alt),
+    date: asText(row.date),
+    author_name: row.author_name == null ? null : asText(row.author_name),
+  };
+}
+
+function mapPuzzle(
+  row: Record<string, unknown>,
+  postsById: Map<string, { slug: string; title: string }>
+): Puzzle {
+  const postId = row.post_id == null ? null : asText(row.post_id);
+  const post = postId ? postsById.get(postId) : undefined;
+  return {
+    id: asText(row.id),
+    title: asText(row.title),
+    type: asText(row.type),
+    data: asText(row.data),
+    date: asText(row.date),
+    author_name: row.author_name == null ? null : asText(row.author_name),
+    cover_image_url: row.cover_image_url == null ? null : asText(row.cover_image_url),
+    post_id: postId,
+    post_slug: post?.slug ?? null,
+    post_title: post?.title ?? null,
+  };
+}
+
 export async function getSettings(): Promise<Settings> {
   return run(async (sql) => {
-    const rows = await sql`
-      SELECT title, description, footer_html, og_image_url
-      FROM settings WHERE id = 1 LIMIT 1
-    `;
-    return (rows[0] as Settings) ?? FALLBACK_SETTINGS;
+    const rows = await sql`SELECT * FROM settings LIMIT 1`;
+    const row = rows[0] as Record<string, unknown> | undefined;
+    if (!row) return FALLBACK_SETTINGS;
+    return {
+      title: asText(row.title) || FALLBACK_SETTINGS.title,
+      description: asText(row.description) || FALLBACK_SETTINGS.description,
+      footer_html: row.footer_html == null ? null : asText(row.footer_html),
+      og_image_url: row.og_image_url == null ? null : asText(row.og_image_url),
+    };
   }, FALLBACK_SETTINGS);
 }
 
 export async function getLatestPost(): Promise<Post | null> {
   return run(async (sql) => {
-    const rows = await sql`
-      SELECT id, title, slug, excerpt, content, cover_image_url, cover_image_alt,
-             date::text, pdf_url
-      FROM posts
-      ORDER BY date DESC
-      LIMIT 1
-    `;
-    return (rows[0] as Post) ?? null;
+    const rows = await sql`SELECT * FROM posts ORDER BY date DESC LIMIT 1`;
+    return rows[0] ? mapPost(rows[0] as Record<string, unknown>) : null;
   }, null);
 }
 
 export async function getMorePosts(limit = 4): Promise<Post[]> {
   return run(async (sql) => {
-    const rows = await sql`
-      SELECT id, title, slug, excerpt, content, cover_image_url, cover_image_alt,
-             date::text, pdf_url
-      FROM posts
-      ORDER BY date DESC
-      OFFSET 1
-      LIMIT ${limit}
-    `;
-    return rows as Post[];
+    const rows = await sql`SELECT * FROM posts ORDER BY date DESC OFFSET 1 LIMIT ${limit}`;
+    return rows.map((row) => mapPost(row as Record<string, unknown>));
   }, []);
 }
 
 export async function getPostBySlug(slug: string): Promise<Post | null> {
   return run(async (sql) => {
-    const rows = await sql`
-      SELECT id, title, slug, excerpt, content, cover_image_url, cover_image_alt,
-             date::text, pdf_url
-      FROM posts
-      WHERE slug = ${slug}
-      LIMIT 1
-    `;
-    return (rows[0] as Post) ?? null;
+    const rows = await sql`SELECT * FROM posts WHERE slug = ${slug} LIMIT 1`;
+    return rows[0] ? mapPost(rows[0] as Record<string, unknown>) : null;
   }, null);
 }
 
 export async function getAllPostSlugs(): Promise<string[]> {
   return run(async (sql) => {
     const rows = await sql`SELECT slug FROM posts ORDER BY date DESC`;
-    return rows.map((r: { slug: string }) => r.slug);
+    return rows.map((r) => asText((r as { slug: string }).slug));
   }, []);
 }
 
 export async function getAllExtras(): Promise<Extra[]> {
   return run(async (sql) => {
-    const rows = await sql`
-      SELECT id, title, slug, excerpt, content, cover_image_url, cover_image_alt,
-             date::text, author_name
-      FROM extras
-      ORDER BY date DESC
-    `;
-    return rows as Extra[];
+    const rows = await sql`SELECT * FROM extras ORDER BY date DESC`;
+    return rows.map((row) => mapExtra(row as Record<string, unknown>));
   }, []);
 }
 
 export async function getExtraBySlug(slug: string): Promise<Extra | null> {
   return run(async (sql) => {
-    const rows = await sql`
-      SELECT id, title, slug, excerpt, content, cover_image_url, cover_image_alt,
-             date::text, author_name
-      FROM extras
-      WHERE slug = ${slug}
-      LIMIT 1
-    `;
-    return (rows[0] as Extra) ?? null;
+    const rows = await sql`SELECT * FROM extras WHERE slug = ${slug} LIMIT 1`;
+    return rows[0] ? mapExtra(rows[0] as Record<string, unknown>) : null;
   }, null);
 }
 
 export async function getAllExtraSlugs(): Promise<string[]> {
   return run(async (sql) => {
     const rows = await sql`SELECT slug FROM extras ORDER BY date DESC`;
-    return rows.map((r: { slug: string }) => r.slug);
+    return rows.map((r) => asText((r as { slug: string }).slug));
   }, []);
 }
 
 export async function getPuzzles(): Promise<Puzzle[]> {
   return run(async (sql) => {
-    const rows = await sql`
-      SELECT p.id, p.title, p.type, p.data, p.date::text, p.author_name,
-             p.cover_image_url, p.post_id,
-             posts.slug AS post_slug, posts.title AS post_title
-      FROM puzzles p
-      LEFT JOIN posts ON posts.id = p.post_id
-      ORDER BY p.date DESC
-    `;
-    return rows as Puzzle[];
+    const rows = await sql`SELECT * FROM puzzles ORDER BY date DESC`;
+    const posts = await sql`SELECT id, slug, title FROM posts`;
+    const postsById = new Map<string, { slug: string; title: string }>();
+    for (const p of posts as { id: string; slug: string; title: string }[]) {
+      postsById.set(asText(p.id), { slug: asText(p.slug), title: asText(p.title) });
+    }
+    return rows.map((row) => mapPuzzle(row as Record<string, unknown>, postsById));
   }, []);
 }
 
@@ -156,10 +177,13 @@ export async function getPage(
 ): Promise<PageContent> {
   const fallback: PageContent = { title: slug, body_html: "", og_image_url: null };
   return run(async (sql) => {
-    const rows = await sql`
-      SELECT title, body_html, og_image_url
-      FROM pages WHERE slug = ${slug} LIMIT 1
-    `;
-    return (rows[0] as PageContent) ?? fallback;
+    const rows = await sql`SELECT * FROM pages WHERE slug = ${slug} LIMIT 1`;
+    const row = rows[0] as Record<string, unknown> | undefined;
+    if (!row) return fallback;
+    return {
+      title: asText(row.title) || slug,
+      body_html: asText(row.body_html),
+      og_image_url: row.og_image_url == null ? null : asText(row.og_image_url),
+    };
   }, fallback);
 }

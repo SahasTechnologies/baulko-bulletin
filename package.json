@@ -12,15 +12,17 @@
     "build": "astro build",
     "preview": "astro preview --host",
     "astro": "astro",
-    "check": "astro check"
+    "check": "astro check",
+    "migrate:media": "node scripts/migrate-media.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^4.4.2",
-    "@astrojs/vercel": "^8.2.10",
+    "@astrojs/vercel": "^9.0.5",
+    "@aws-sdk/client-s3": "^3.901.0",
     "@neondatabase/serverless": "^1.0.2",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.13",
-    "astro": "^5.13.10",
+    "astro": "^5.18.2",
     "date-fns": "^4.1.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
@@ -31,5 +33,9 @@
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "path-to-regexp": "6.3.0",
+    "sharp": "0.35.4"
   }
 }

@@ -1,5 +1,3 @@
-/** Cover images on the old site were Sanity-cropped to 2000×1000 (2:1). */
-
 const COVER_W = 2000;
 const COVER_H = 1000;
 
@@ -21,7 +19,7 @@ export function croppedCoverUrl(src: string | null | undefined): string | null {
       return u.toString();
     }
   } catch {
-    // leave as-is
+    return src;
   }
   return src;
 }
