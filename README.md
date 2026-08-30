@@ -11,13 +11,12 @@ git clone https://github.com/SahasTechnologies/baulko-bulletin.git
 cd baulko-bulletin
 npm install
 copy .env.example .env
-# paste your Neon DATABASE_URL into .env
 npm run dev
 ```
 
-Then open the URL Astro prints (usually `http://localhost:4321`).
+Paste your Neon `DATABASE_URL` into `.env`. Open the URL Astro prints (usually `http://localhost:4321`).
 
-`npm run dev` works **without** `DATABASE_URL` — the chrome and pages load, content is empty until Neon is connected.
+The site starts without `DATABASE_URL`; content pages stay empty until it is set.
 
 ## Scripts
 
@@ -26,6 +25,7 @@ Then open the URL Astro prints (usually `http://localhost:4321`).
 | `npm run dev` | Local server |
 | `npm run build` | Production build (Vercel adapter) |
 | `npm run preview` | Preview the production build |
+| `npm run migrate:media` | Copy Sanity CDN files in Neon to ImageKit + Filebase |
 
 ## Database
 
@@ -39,8 +39,10 @@ Env var name: **`DATABASE_URL`**
 
 ## Media
 
-- **Images** → ImageKit (cover photos, auto-cropped 2:1 like the old site)
+- **Images** → ImageKit (cover photos, auto-cropped 2:1)
 - **PDFs** → Filebase (issue downloads)
+
+`npm run migrate:media` needs ImageKit and Filebase keys in `.env`. It only rewrites URLs that still point at `cdn.sanity.io`.
 
 ## Contact form
 

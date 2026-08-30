@@ -15,7 +15,7 @@ export const POST: APIRoute = async ({ request }) => {
     let name = "";
     let email = "";
     let message = "";
-    let website = ""; // honeypot
+    let website = "";
 
     if (contentType.includes("application/json")) {
       const body = await request.json();
@@ -31,7 +31,6 @@ export const POST: APIRoute = async ({ request }) => {
       website = String(form.get("website") || "").trim();
     }
 
-    // Honeypot: bots fill hidden fields — silently succeed so they don't retry
     if (website) {
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -53,7 +52,6 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    // Basic email shape check
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return new Response(
         JSON.stringify({ ok: false, error: "Invalid email address." }),
@@ -67,7 +65,6 @@ export const POST: APIRoute = async ({ request }) => {
       VALUES (${name}, ${email}, ${message})
     `;
 
-    // Form POST from browser: redirect back with success flag
     const accept = request.headers.get("accept") || "";
     if (accept.includes("text/html")) {
       return new Response(null, {

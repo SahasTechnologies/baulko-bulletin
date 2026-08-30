@@ -32,7 +32,6 @@ const sent = Astro.url.searchParams.get("sent") === "1";
       </div>
     ) : (
       <form action="/api/contact" method="POST" class="space-y-6">
-        {/* Honeypot — hidden from humans, bots often fill it */}
         <div class="absolute left-[-9999px] top-auto h-0 w-0 overflow-hidden" aria-hidden="true">
           <label for="website">Website</label>
           <input
