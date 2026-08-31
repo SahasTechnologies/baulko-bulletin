@@ -1,0 +1,29 @@
+---
+import ThemeToggle from "@/components/ui/ThemeToggle";
+
+interface Props {
+  class?: string;
+}
+
+const extraClass = Astro.props.class || "";
+---
+
+<nav class:list={["flex flex-wrap items-center justify-center lg:justify-start text-xl gap-8 lg:gap-12 font-medium", extraClass]}>
+  <a class="inline-flex items-center gap-1.5 transition-transform hover:scale-[1.15]" href="/about">
+    <ion-icon name="information-circle"></ion-icon>
+    About
+  </a>
+  <a class="inline-flex items-center gap-1.5 transition-transform hover:scale-[1.15]" href="/faq">
+    <ion-icon name="help-circle"></ion-icon>
+    FAQ
+  </a>
+  <a class="inline-flex items-center gap-1.5 transition-transform hover:scale-[1.15]" href="/join">
+    <ion-icon name="people"></ion-icon>
+    Join
+  </a>
+  <a class="inline-flex items-center gap-1.5 transition-transform hover:scale-[1.15]" href="/puzzles">
+    <ion-icon name="extension-puzzle"></ion-icon>
+    Puzzles
+  </a>
+  <ThemeToggle client:load />
+</nav>

@@ -15,3 +15,9 @@ html.dark {
 body {
   font-family: inherit;
 }
+
+ion-icon {
+  pointer-events: none;
+  font-size: 1.15em;
+  vertical-align: -0.2em;
+}

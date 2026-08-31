@@ -1,16 +1,21 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
+import PageHeader from "@/components/PageHeader.astro";
 import { getSettings } from "@/lib/db";
 
 const settings = await getSettings();
 ---
 
 <BaseLayout title="Not found" settings={settings}>
-  <div class="container mx-auto px-5 py-24 text-center">
-    <h1 class="text-6xl font-bold tracking-tighter mb-6">404</h1>
-    <p class="text-xl opacity-70 mb-10">That page does not exist.</p>
-    <a href="/" class="bg-black text-white font-bold py-3 px-10 rounded-full inline-block hover:scale-105 transition-transform">
-      Back home
-    </a>
+  <div class="container mx-auto px-5">
+    <PageHeader brand={settings.title} />
+    <div class="py-16 text-center">
+      <h1 class="text-6xl font-bold tracking-tighter mb-6">404</h1>
+      <p class="text-xl opacity-70 mb-10">That page does not exist.</p>
+      <a href="/" class="inline-flex items-center gap-2 bg-black dark:bg-white dark:text-black text-white font-bold py-3 px-10 rounded-full hover:scale-105 transition-transform">
+        <ion-icon name="home"></ion-icon>
+        Back home
+      </a>
+    </div>
   </div>
 </BaseLayout>

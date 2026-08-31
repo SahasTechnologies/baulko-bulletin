@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
+import PageHeader from "@/components/PageHeader.astro";
 import { getSettings } from "@/lib/db";
 
 export const prerender = false;
@@ -9,83 +10,83 @@ const sent = Astro.url.searchParams.get("sent") === "1";
 ---
 
 <BaseLayout title="Contact" settings={settings}>
-  <div class="container mx-auto px-5 max-w-xl">
-    <h2 class="mb-8 mt-10 text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:tracking-tighter">
-      <a href="/" class="flex gap-2 sm:gap-3 items-center hover:underline">
-        <img alt="Bulletin logo" class="size-[60px]" height={350} width={350} src="/bulletin.png" />
-        Baulko Bulletin
-      </a>
-    </h2>
+  <div class="container mx-auto px-5 max-w-3xl">
+    <PageHeader brand={settings.title} />
+    <div class="max-w-xl">
+      <h1 class="mb-4 text-5xl font-bold leading-tight tracking-tighter md:text-6xl">
+        Contact Us
+      </h1>
+      <p class="mb-10 text-lg opacity-70">
+        Questions, feedback, or want to contribute? Send a message below.
+      </p>
 
-    <h1 class="mb-4 text-5xl font-bold leading-tight tracking-tighter md:text-6xl">
-      Contact Us
-    </h1>
-    <p class="mb-10 text-lg opacity-70">
-      Questions, feedback, or want to contribute? Send a message below.
-    </p>
-
-    {sent ? (
-      <div class="rounded-2xl bg-black/5 dark:bg-white/5 px-6 py-8 text-lg">
-        <p class="font-semibold mb-2">Thanks — your message was sent.</p>
-        <p class="opacity-70">We'll get back to you if a reply is needed.</p>
-        <a href="/contact" class="inline-block mt-6 underline">Send another message</a>
-      </div>
-    ) : (
-      <form action="/api/contact" method="POST" class="space-y-6">
-        <div class="absolute left-[-9999px] top-auto h-0 w-0 overflow-hidden" aria-hidden="true">
-          <label for="website">Website</label>
-          <input
-            id="website"
-            type="text"
-            name="website"
-            tabindex="-1"
-            autocomplete="off"
-          />
+      {sent ? (
+        <div class="rounded-2xl bg-black/5 dark:bg-white/5 px-6 py-8 text-lg">
+          <p class="font-semibold mb-2">Thanks — your message was sent.</p>
+          <p class="opacity-70">We'll get back to you if a reply is needed.</p>
+          <a href="/contact" class="inline-flex items-center gap-2 mt-6 underline">
+            <ion-icon name="refresh"></ion-icon>
+            Send another message
+          </a>
         </div>
+      ) : (
+        <form action="/api/contact" method="POST" class="space-y-6">
+          <div class="absolute left-[-9999px] top-auto h-0 w-0 overflow-hidden" aria-hidden="true">
+            <label for="website">Website</label>
+            <input
+              id="website"
+              type="text"
+              name="website"
+              tabindex="-1"
+              autocomplete="off"
+            />
+          </div>
 
-        <div>
-          <label for="name" class="block text-sm font-medium mb-1">Name</label>
-          <input
-            id="name"
-            type="text"
-            name="name"
-            required
-            maxlength="200"
-            class="w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30"
-          />
-        </div>
+          <div>
+            <label for="name" class="block text-sm font-medium mb-1">Name</label>
+            <input
+              id="name"
+              type="text"
+              name="name"
+              required
+              maxlength="200"
+              class="w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30"
+            />
+          </div>
 
-        <div>
-          <label for="email" class="block text-sm font-medium mb-1">Email</label>
-          <input
-            id="email"
-            type="email"
-            name="email"
-            required
-            maxlength="320"
-            class="w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30"
-          />
-        </div>
+          <div>
+            <label for="email" class="block text-sm font-medium mb-1">Email</label>
+            <input
+              id="email"
+              type="email"
+              name="email"
+              required
+              maxlength="320"
+              class="w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30"
+            />
+          </div>
 
-        <div>
-          <label for="message" class="block text-sm font-medium mb-1">Message</label>
-          <textarea
-            id="message"
-            name="message"
-            required
-            rows="6"
-            maxlength="5000"
-            class="w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30"
-          ></textarea>
-        </div>
+          <div>
+            <label for="message" class="block text-sm font-medium mb-1">Message</label>
+            <textarea
+              id="message"
+              name="message"
+              required
+              rows="6"
+              maxlength="5000"
+              class="w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30"
+            ></textarea>
+          </div>
 
-        <button
-          type="submit"
-          class="bg-black dark:bg-white dark:text-black text-white font-bold py-3 px-10 rounded-full text-lg transition-transform hover:scale-105"
-        >
-          Send message
-        </button>
-      </form>
-    )}
+          <button
+            type="submit"
+            class="inline-flex items-center gap-2 bg-black dark:bg-white dark:text-black text-white font-bold py-3 px-10 rounded-full text-lg transition-transform hover:scale-105"
+          >
+            <ion-icon name="send"></ion-icon>
+            Send message
+          </button>
+        </form>
+      )}
+    </div>
   </div>
 </BaseLayout>

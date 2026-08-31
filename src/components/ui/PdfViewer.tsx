@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createElement, useEffect, useRef, useState } from "react";
 
 export default function PdfViewer({ src }: { src: string }) {
   const leftRef = useRef<HTMLCanvasElement>(null);
@@ -142,10 +142,10 @@ export default function PdfViewer({ src }: { src: string }) {
             type="button"
             onClick={() => go(-1)}
             disabled={page <= 1}
-            className="size-12 rounded-full bg-black text-white disabled:opacity-30 dark:bg-white dark:text-black transition hover:scale-105"
+            className="inline-flex size-12 items-center justify-center rounded-full bg-black text-white text-2xl disabled:opacity-30 dark:bg-white dark:text-black transition hover:scale-105"
             aria-label="Previous page"
           >
-            ‹
+            {createElement("ion-icon", { name: "chevron-back" })}
           </button>
           <div className="min-w-28 text-center text-sm font-medium tracking-wide opacity-70">
             {label}
@@ -154,10 +154,10 @@ export default function PdfViewer({ src }: { src: string }) {
             type="button"
             onClick={() => go(1)}
             disabled={page >= numPages}
-            className="size-12 rounded-full bg-black text-white disabled:opacity-30 dark:bg-white dark:text-black transition hover:scale-105"
+            className="inline-flex size-12 items-center justify-center rounded-full bg-black text-white text-2xl disabled:opacity-30 dark:bg-white dark:text-black transition hover:scale-105"
             aria-label="Next page"
           >
-            ›
+            {createElement("ion-icon", { name: "chevron-forward" })}
           </button>
         </div>
       </div>

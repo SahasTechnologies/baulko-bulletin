@@ -1,7 +1,6 @@
 ---
 import "@/styles/global.css";
 import type { Settings } from "@/types/content";
-import ThemeToggle from "@/components/ui/ThemeToggle";
 
 interface Props {
   title?: string;
@@ -36,49 +35,50 @@ const pageDescription = description || settings.description;
         } catch (e) {}
       })();
     </script>
+    <script type="module" src="https://unpkg.com/ionicons@7.4.0/dist/ionicons/ionicons.esm.js"></script>
   </head>
   <body>
-    <ThemeToggle client:load />
     <section class="min-h-screen">
       <main class="pb-16">
         <slot />
       </main>
 
       <footer class="px-6 mt-8">
-        <div class="container mx-auto mb-10 px-10 bg-black/5 dark:bg-white/5 rounded-2xl">
+        <div class="container mx-auto mb-10 px-8 md:px-10 bg-black/5 dark:bg-white/5 rounded-2xl">
           {settings.footer_html ? (
             <div
-              class="prose prose-sm dark:prose-invert text-pretty bottom-0 w-full max-w-none py-12 text-center md:py-20"
+              class="prose prose-sm dark:prose-invert text-pretty w-full max-w-none py-12 text-center md:py-20"
               set:html={settings.footer_html}
             />
           ) : (
-            <div class="flex flex-col items-center py-28 lg:flex-row">
-              <div class="flex flex-col w-full">
-                <h3 class="text-center text-4xl font-bold leading-tight tracking-tighter lg:pr-4 lg:text-left lg:text-5xl">
+            <div class="flex flex-col gap-10 py-16 md:py-20 lg:flex-row lg:items-center lg:justify-between lg:gap-16">
+              <div class="flex flex-col gap-1 text-center lg:text-left">
+                <h3 class="text-4xl font-bold leading-tight tracking-tighter lg:text-5xl">
                   Join the Bulletin.
                 </h3>
-                <h3 class="mb-10 opacity-70 text-center text-4xl font-bold leading-tight tracking-tighter lg:mb-0 lg:pr-4 lg:text-left lg:text-5xl -translate-y-1">
+                <h3 class="opacity-70 text-4xl font-bold leading-tight tracking-tighter lg:text-5xl">
                   Thursday lunches in C11
                 </h3>
               </div>
-              <div class="flex flex-col items-center lg:items-end lg:w-1/2 lg:pl-4">
-                <div class="text-lg opacity-80 pb-2">
+              <div class="flex flex-col items-center lg:items-end gap-4">
+                <p class="text-lg opacity-80">
                   For any questions or comments, feel free to
-                </div>
+                </p>
                 <a
                   href="/contact"
-                  class="bg-black dark:bg-white dark:text-black py-3 px-12 font-bold text-white transition-all hover:scale-110 lg:px-8 text-lg rounded-full"
+                  class="inline-flex items-center gap-2 bg-black dark:bg-white dark:text-black py-3 px-8 font-bold text-white transition-all hover:scale-110 text-lg rounded-full"
                 >
+                  <ion-icon name="chatbubbles"></ion-icon>
                   Contact Us
                 </a>
-                <div class="flex flex-col items-center lg:items-end text-lg mt-10 opacity-70 gap-1">
-                  <p class="opacity-50">
+                <div class="flex flex-col items-center lg:items-end text-sm opacity-50 gap-1 pt-1">
+                  <p>
                     Website by
-                    <a href="https://candra.dev" class="underline-offset-2 hover:underline">Darren Candra</a>
+                    <a href="https://candra.dev" class="hover:underline">Darren Candra</a>
                     &
-                    <a href="https://shimpi.dev" class="underline-offset-2 hover:underline">Sahas Shimpi</a>
+                    <a href="https://shimpi.dev" class="hover:underline">Sahas Shimpi</a>
                   </p>
-                  <a href="https://github.com/circles-png" class="opacity-50">Puzzles by Matthew Li</a>
+                  <a href="https://github.com/circles-png" class="hover:underline">Puzzles by Matthew Li</a>
                 </div>
               </div>
             </div>
