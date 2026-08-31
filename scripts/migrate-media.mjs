@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { neon } from "@neondatabase/serverless";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
 
 function loadEnv() {
   for (const name of [".env.local", ".env"]) {
@@ -34,54 +35,85 @@ const sql = neon(process.env.DATABASE_URL);
 const s3 = new S3Client({
   region: "us-east-1",
   endpoint: "https://s3.filebase.com",
+  forcePathStyle: true,
+  maxAttempts: 8,
+  requestHandler: new NodeHttpHandler({
+    connectionTimeout: 60_000,
+    requestTimeout: 600_000,
+  }),
   credentials: {
     accessKeyId: process.env.FILEBASE_ACCESS_KEY,
     secretAccessKey: process.env.FILEBASE_SECRET_KEY,
   },
 });
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function retry(label, fn) {
+  let last;
+  for (let i = 1; i <= 8; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      const wait = Math.min(30_000, 1000 * 2 ** (i - 1));
+      console.warn(`${label} failed (${i}/8): ${err.code || err.message}. retry in ${wait}ms`);
+      await sleep(wait);
+    }
+  }
+  throw last;
+}
+
 function filenameFromUrl(url) {
   return decodeURIComponent(new URL(url).pathname.split("/").pop() || "file");
 }
 
 async function download(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`download ${res.status} ${url}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  return { buf, type: res.headers.get("content-type") || "application/octet-stream" };
+  return retry(`download ${url}`, async () => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`download ${res.status} ${url}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    return { buf, type: res.headers.get("content-type") || "application/octet-stream" };
+  });
 }
 
 async function uploadImageKit(buf, fileName) {
-  const body = new FormData();
-  body.append("file", new Blob([buf]), fileName);
-  body.append("fileName", fileName);
-  body.append("folder", "/bulletin");
-  body.append("useUniqueFileName", "true");
-  const auth = Buffer.from(process.env.IMAGEKIT_PRIVATE_KEY + ":").toString("base64");
-  const res = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
-    method: "POST",
-    headers: { Authorization: `Basic ${auth}` },
-    body,
+  return retry(`imagekit ${fileName}`, async () => {
+    const body = new FormData();
+    body.append("file", new Blob([buf]), fileName);
+    body.append("fileName", fileName);
+    body.append("folder", "/bulletin");
+    body.append("useUniqueFileName", "false");
+    const auth = Buffer.from(process.env.IMAGEKIT_PRIVATE_KEY + ":").toString("base64");
+    const res = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
+      method: "POST",
+      headers: { Authorization: `Basic ${auth}` },
+      body,
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(JSON.stringify(json));
+    return json.url;
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(JSON.stringify(json));
-  return json.url;
 }
 
 async function uploadFilebase(buf, key, type) {
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: process.env.FILEBASE_BUCKET,
-      Key: key,
-      Body: buf,
-      ContentType: type,
-      ACL: "public-read",
-    })
-  );
-  return `https://${process.env.FILEBASE_BUCKET}.s3.filebase.com/${key}`;
+  return retry(`filebase ${key} (${(buf.length / 1024 / 1024).toFixed(1)}MB)`, async () => {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: process.env.FILEBASE_BUCKET,
+        Key: key,
+        Body: buf,
+        ContentType: type,
+      })
+    );
+    return `https://s3.filebase.com/${process.env.FILEBASE_BUCKET}/${key}`;
+  });
 }
 
 const cache = new Map();
+const failed = [];
 
 async function migrateUrl(url) {
   if (!url) return url;
@@ -89,37 +121,46 @@ async function migrateUrl(url) {
   if (!s.includes("cdn.sanity.io")) return s;
   if (cache.has(s)) return cache.get(s);
   const name = filenameFromUrl(s);
-  const { buf, type } = await download(s);
-  const next =
-    type.includes("pdf") || name.toLowerCase().endsWith(".pdf")
-      ? await uploadFilebase(buf, `pdfs/${name}`, "application/pdf")
-      : await uploadImageKit(buf, name);
-  cache.set(s, next);
-  console.log(s, "->", next);
-  return next;
+  try {
+    const { buf, type } = await download(s);
+    console.log(`got ${name} (${(buf.length / 1024 / 1024).toFixed(1)}MB)`);
+    const next =
+      type.includes("pdf") || name.toLowerCase().endsWith(".pdf")
+        ? await uploadFilebase(buf, `pdfs/${name}`, "application/pdf")
+        : await uploadImageKit(buf, name);
+    cache.set(s, next);
+    console.log(s, "->", next);
+    return next;
+  } catch (err) {
+    failed.push({ url: s, error: err.message || String(err) });
+    console.error("skip", s, err.message || err);
+    return s;
+  }
 }
 
-try {
-  const posts = await sql`SELECT id, cover_image_url, pdf_url FROM posts`;
-  const extras = await sql`SELECT id, cover_image_url FROM extras`;
-  const puzzles = await sql`SELECT id, cover_image_url FROM puzzles`;
-  console.log(`Neon: ${posts.length} posts, ${extras.length} extras, ${puzzles.length} puzzles`);
+const posts = await sql`SELECT id, cover_image_url, pdf_url FROM posts`;
+const extras = await sql`SELECT id, cover_image_url FROM extras`;
+const puzzles = await sql`SELECT id, cover_image_url FROM puzzles`;
+console.log(`Neon: ${posts.length} posts, ${extras.length} extras, ${puzzles.length} puzzles`);
 
-  for (const row of posts) {
-    const cover = await migrateUrl(row.cover_image_url);
-    const pdf = await migrateUrl(row.pdf_url);
-    await sql`UPDATE posts SET cover_image_url = ${cover}, pdf_url = ${pdf} WHERE id = ${row.id}`;
-  }
-  for (const row of extras) {
-    const cover = await migrateUrl(row.cover_image_url);
-    await sql`UPDATE extras SET cover_image_url = ${cover} WHERE id = ${row.id}`;
-  }
-  for (const row of puzzles) {
-    const cover = await migrateUrl(row.cover_image_url);
-    await sql`UPDATE puzzles SET cover_image_url = ${cover} WHERE id = ${row.id}`;
-  }
-  console.log("done", cache.size, "files moved");
-} catch (err) {
-  console.error(err);
+for (const row of posts) {
+  const cover = await migrateUrl(row.cover_image_url);
+  const pdf = await migrateUrl(row.pdf_url);
+  await sql`UPDATE posts SET cover_image_url = ${cover}, pdf_url = ${pdf} WHERE id = ${row.id}`;
+}
+for (const row of extras) {
+  const cover = await migrateUrl(row.cover_image_url);
+  await sql`UPDATE extras SET cover_image_url = ${cover} WHERE id = ${row.id}`;
+}
+for (const row of puzzles) {
+  const cover = await migrateUrl(row.cover_image_url);
+  await sql`UPDATE puzzles SET cover_image_url = ${cover} WHERE id = ${row.id}`;
+}
+
+console.log("moved", cache.size, "files");
+if (failed.length) {
+  console.error("still failed:", failed.length);
+  for (const f of failed) console.error("-", f.url, f.error);
   process.exit(1);
 }
+console.log("done");
