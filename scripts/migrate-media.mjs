@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { neon } from "@neondatabase/serverless";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, HeadBucketCommand } from "@aws-sdk/client-s3";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 
 function loadEnv() {
@@ -31,11 +31,12 @@ if (missing.length) {
   process.exit(1);
 }
 
+const bucket = process.env.FILEBASE_BUCKET.trim();
 const sql = neon(process.env.DATABASE_URL);
 const s3 = new S3Client({
   region: "us-east-1",
   endpoint: "https://s3.filebase.com",
-  forcePathStyle: true,
+  forcePathStyle: false,
   maxAttempts: 8,
   requestHandler: new NodeHttpHandler({
     connectionTimeout: 60_000,
@@ -58,6 +59,7 @@ async function retry(label, fn) {
       return await fn();
     } catch (err) {
       last = err;
+      if (err.Code === "NoSuchBucket" || err.name === "NoSuchBucket") throw err;
       const wait = Math.min(30_000, 1000 * 2 ** (i - 1));
       console.warn(`${label} failed (${i}/8): ${err.code || err.message}. retry in ${wait}ms`);
       await sleep(wait);
@@ -102,14 +104,24 @@ async function uploadFilebase(buf, key, type) {
   return retry(`filebase ${key} (${(buf.length / 1024 / 1024).toFixed(1)}MB)`, async () => {
     await s3.send(
       new PutObjectCommand({
-        Bucket: process.env.FILEBASE_BUCKET,
+        Bucket: bucket,
         Key: key,
         Body: buf,
         ContentType: type,
       })
     );
-    return `https://s3.filebase.com/${process.env.FILEBASE_BUCKET}/${key}`;
+    return `https://${bucket}.s3.filebase.com/${key}`;
   });
+}
+
+try {
+  await s3.send(new HeadBucketCommand({ Bucket: bucket }));
+  console.log("Filebase bucket ok:", bucket);
+} catch (err) {
+  console.error(`Filebase bucket "${bucket}" was not found.`);
+  console.error("In https://console.filebase.com create a bucket, copy its exact name into FILEBASE_BUCKET in .env, then re-run.");
+  console.error(err.Code || err.message);
+  process.exit(1);
 }
 
 const cache = new Map();
