@@ -1,6 +1,7 @@
 import type { Extra, Post } from "@/types/content";
 import CoverImage from "./CoverImage";
 import DateComponent from "./DateComponent";
+import Byline from "./Byline";
 
 function Card({
   href,
@@ -17,7 +18,7 @@ function Card({
   excerpt: string | null;
   cover: string | null;
   alt: string | null;
-  author?: string | null;
+  author: string;
 }) {
   return (
     <article className="snap-start w-[80vw] md:w-[550px] shrink-0">
@@ -29,11 +30,11 @@ function Card({
           {title}
         </a>
       </h3>
-      <div className="mb-4 text-lg font-medium opacity-70">
+      <div className="mb-3 text-lg font-medium opacity-70">
         <DateComponent dateString={date} />
       </div>
-      {excerpt && <p className="text-pretty mb-4 text-lg">{excerpt}</p>}
-      {author && <p className="text-lg opacity-70">by {author}</p>}
+      {excerpt && <p className="text-pretty mb-3 text-lg">{excerpt}</p>}
+      <Byline name={author} />
     </article>
   );
 }
@@ -66,6 +67,7 @@ export default function MoreStories({
                 excerpt={post.excerpt}
                 cover={post.cover_image_url}
                 alt={post.cover_image_alt}
+                author="Team Bulletin"
               />
             ))}
           </div>
@@ -86,7 +88,7 @@ export default function MoreStories({
                 excerpt={extra.excerpt}
                 cover={extra.cover_image_url}
                 alt={extra.cover_image_alt}
-                author={extra.author_name}
+                author={extra.author_name?.trim() || "Anonymous"}
               />
             ))}
           </div>

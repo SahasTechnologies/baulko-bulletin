@@ -1,8 +1,10 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
+import PageHeader from "@/components/PageHeader.astro";
 import CoverImage from "@/components/ui/CoverImage";
 import DateComponent from "@/components/ui/DateComponent";
 import MoreStories from "@/components/ui/MoreStories";
+import Byline from "@/components/ui/Byline";
 import { getSettings, getExtraBySlug, getMorePosts } from "@/lib/db";
 
 const { slug } = Astro.params;
@@ -18,19 +20,14 @@ const morePosts = await getMorePosts(2);
 
 <BaseLayout title={extra.title} description={extra.excerpt || undefined} settings={settings} ogImage={extra.cover_image_url}>
   <div class="container mx-auto px-5">
-    <h2 class="mb-8 mt-10 text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:tracking-tighter">
-      <a href="/" class="flex gap-2 sm:gap-3 items-center hover:underline">
-        <img alt="Bulletin logo" class="size-[60px]" height={350} width={350} src="/bulletin.png" />
-        {settings.title}
-      </a>
-    </h2>
+    <PageHeader brand={settings.title} />
     <article>
       <h1 class="text-balance mb-4 text-6xl font-bold leading-tight tracking-tighter md:text-7xl md:leading-none lg:text-8xl">
         {extra.title}
       </h1>
-      {extra.author_name && (
-        <p class="mb-8 text-xl opacity-70">by {extra.author_name}</p>
-      )}
+      <div class="mb-4">
+        <Byline client:load name={extra.author_name?.trim() || "Anonymous"} />
+      </div>
       <div class="mb-8 sm:mx-0 md:mb-16">
         <CoverImage client:load src={extra.cover_image_url} alt={extra.cover_image_alt} priority />
       </div>

@@ -1,0 +1,17 @@
+---
+import NavLinks from "@/components/NavLinks.astro";
+
+interface Props {
+  brand?: string;
+}
+
+const brand = Astro.props.brand || "Baulko Bulletin";
+---
+
+<div class="mb-8 mt-10 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+  <a href="/" class="flex gap-2 sm:gap-3 items-center hover:underline text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:tracking-tighter">
+    <img alt="Bulletin logo" class="size-[60px]" height={350} width={350} src="/bulletin.png" />
+    {brand}
+  </a>
+  <NavLinks class="text-lg gap-6 lg:gap-8 justify-start" />
+</div>
