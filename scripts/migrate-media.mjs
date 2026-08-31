@@ -32,10 +32,13 @@ if (missing.length) {
 }
 
 const bucket = process.env.FILEBASE_BUCKET.trim();
+const endpoint = (process.env.FILEBASE_ENDPOINT || "https://s3.filebase.io").replace(/\/$/, "");
+const region = process.env.FILEBASE_REGION || "auto";
+const host = new URL(endpoint).host;
 const sql = neon(process.env.DATABASE_URL);
 const s3 = new S3Client({
-  region: "us-east-1",
-  endpoint: "https://s3.filebase.com",
+  region,
+  endpoint,
   forcePathStyle: false,
   maxAttempts: 8,
   requestHandler: new NodeHttpHandler({
@@ -110,16 +113,18 @@ async function uploadFilebase(buf, key, type) {
         ContentType: type,
       })
     );
-    return `https://${bucket}.s3.filebase.com/${key}`;
+    return `https://${bucket}.${host}/${key}`;
   });
 }
+
+console.log("Filebase endpoint:", endpoint, "region:", region, "bucket:", bucket);
 
 try {
   await s3.send(new HeadBucketCommand({ Bucket: bucket }));
   console.log("Filebase bucket ok:", bucket);
 } catch (err) {
-  console.error(`Filebase bucket "${bucket}" was not found.`);
-  console.error("In https://console.filebase.com create a bucket, copy its exact name into FILEBASE_BUCKET in .env, then re-run.");
+  console.error(`Filebase bucket "${bucket}" was not found at ${endpoint}.`);
+  console.error("Your console URL uses s3.filebase.io — set FILEBASE_ENDPOINT=https://s3.filebase.io in .env");
   console.error(err.Code || err.message);
   process.exit(1);
 }

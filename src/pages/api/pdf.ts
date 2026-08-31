@@ -10,6 +10,8 @@ function allowed(src: string) {
       host.endsWith(".sanity.io") ||
       host === "s3.filebase.com" ||
       host.endsWith(".filebase.com") ||
+      host === "s3.filebase.io" ||
+      host.endsWith(".filebase.io") ||
       host === "ik.imagekit.io" ||
       host.endsWith(".imagekit.io")
     );
