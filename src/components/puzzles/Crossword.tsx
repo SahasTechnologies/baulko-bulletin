@@ -45,8 +45,9 @@ export function Crossword({ puzzle }: {
     return letter;
   })), [size.x, size.y, starts, words]);
 
-  const [outerSolution, setOuterSolution] = useState(null);
-  const [selectedWord, setSelectedWord] = useState<{
+  // Setter-only state: the values are written but never read back.
+  const [, setOuterSolution] = useState(null);
+  const [, setSelectedWord] = useState<{
     x: number, y: number, word: string, direction: 'across' | 'down'
   } | null>(null);
   const [selected, setSelected] = useState<number | null>(null);

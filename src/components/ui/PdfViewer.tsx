@@ -23,9 +23,13 @@ export default function PdfViewer({ src }: { src: string }) {
     (async () => {
       try {
         const pdfjs = await import("pdfjs-dist");
-        pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+        const cdn = `https://unpkg.com/pdfjs-dist@${pdfjs.version}`;
+        pdfjs.GlobalWorkerOptions.workerSrc = `${cdn}/build/pdf.worker.min.mjs`;
         const doc = await pdfjs.getDocument({
-          url: `/api/pdf?src=${encodeURIComponent(src)}`,
+          url: src,
+          // Issues embed JPEG2000/JBIG2 art; without the wasm decoders pdf.js
+          // drops those images and logs "OpenJPEG failed to initialize".
+          wasmUrl: `${cdn}/wasm/`,
         }).promise;
         if (cancelled) return;
         setPdf(doc);

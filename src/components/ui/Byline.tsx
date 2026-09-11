@@ -1,9 +1,21 @@
 import { createElement } from "react";
 
 export default function Byline({ name }: { name: string }) {
+  const isTeam = name.trim().toLowerCase() === "team bulletin";
+
   return (
     <div className="flex items-center gap-2 text-xl font-bold">
-      {createElement("ion-icon", { name: "people-circle" })}
+      {isTeam ? (
+        <img
+          alt=""
+          className="size-7 shrink-0 object-contain"
+          height={850}
+          width={850}
+          src="/bulletin.png"
+        />
+      ) : (
+        createElement("ion-icon", { name: "person-circle" })
+      )}
       <span>{name}</span>
     </div>
   );
