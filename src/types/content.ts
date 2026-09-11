@@ -1,3 +1,9 @@
+export interface Author {
+  name: string;
+  picture_url: string | null;
+  picture_alt: string | null;
+}
+
 export interface Post {
   id: string;
   title: string;

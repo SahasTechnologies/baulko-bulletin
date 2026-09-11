@@ -35,7 +35,7 @@ const pageDescription = description || settings.description;
         } catch (e) {}
       })();
     </script>
-    <script type="module" src="https://unpkg.com/ionicons@7.4.0/dist/ionicons/ionicons.esm.js"></script>
+    <script is:inline type="module" src="https://unpkg.com/ionicons@7.4.0/dist/ionicons/ionicons.esm.js"></script>
   </head>
   <body>
     <section class="min-h-screen">
@@ -72,10 +72,10 @@ const pageDescription = description || settings.description;
                   Contact Us
                 </a>
                 <div class="flex flex-col items-center lg:items-end text-sm opacity-50 gap-1 pt-1">
-                  <p>
-                    Website by
+                  <p class="flex flex-wrap items-center justify-center gap-x-2 lg:justify-end">
+                    <span>Website by</span>
                     <a href="https://candra.dev" class="hover:underline">Darren Candra</a>
-                    &
+                    <span aria-hidden="true">&amp;</span>
                     <a href="https://shimpi.dev" class="hover:underline">Sahas Shimpi</a>
                   </p>
                   <a href="https://github.com/circles-png" class="hover:underline">Puzzles by Matthew Li</a>

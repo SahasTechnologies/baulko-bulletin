@@ -21,3 +21,30 @@ ion-icon {
   font-size: 1.15em;
   vertical-align: -0.2em;
 }
+
+.theme-toggle {
+  cursor: pointer;
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.theme-toggle:hover {
+  transform: rotate(20deg) scale(1.15);
+}
+
+.theme-toggle:active {
+  transform: rotate(20deg) scale(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle {
+    transition: none;
+  }
+
+  .theme-toggle:hover {
+    transform: scale(1.15);
+  }
+
+  .theme-toggle:active {
+    transform: scale(0.94);
+  }
+}

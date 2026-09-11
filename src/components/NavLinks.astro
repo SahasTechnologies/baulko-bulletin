@@ -6,24 +6,27 @@ interface Props {
 }
 
 const extraClass = Astro.props.class || "";
+
+const links = [
+  { href: "/about", icon: "information-circle", label: "About" },
+  { href: "/faq", icon: "help-circle", label: "FAQ" },
+  { href: "/join", icon: "people", label: "Join" },
+  { href: "/puzzles", icon: "extension-puzzle", label: "Puzzles" },
+];
 ---
 
 <nav class:list={["flex flex-wrap items-center justify-center lg:justify-start text-xl gap-8 lg:gap-12 font-medium", extraClass]}>
-  <a class="inline-flex items-center gap-1.5 transition-transform hover:scale-[1.15]" href="/about">
-    <ion-icon name="information-circle"></ion-icon>
-    About
-  </a>
-  <a class="inline-flex items-center gap-1.5 transition-transform hover:scale-[1.15]" href="/faq">
-    <ion-icon name="help-circle"></ion-icon>
-    FAQ
-  </a>
-  <a class="inline-flex items-center gap-1.5 transition-transform hover:scale-[1.15]" href="/join">
-    <ion-icon name="people"></ion-icon>
-    Join
-  </a>
-  <a class="inline-flex items-center gap-1.5 transition-transform hover:scale-[1.15]" href="/puzzles">
-    <ion-icon name="extension-puzzle"></ion-icon>
-    Puzzles
-  </a>
+  {links.map((link) => (
+    <a
+      class="group inline-flex items-center gap-1.5 transition-transform duration-300 ease-out hover:scale-[1.15]"
+      href={link.href}
+    >
+      <ion-icon
+        name={link.icon}
+        class="inline-block transition-transform duration-300 ease-out group-hover:rotate-12"
+      ></ion-icon>
+      {link.label}
+    </a>
+  ))}
   <ThemeToggle client:load />
 </nav>

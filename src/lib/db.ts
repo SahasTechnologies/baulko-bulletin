@@ -23,14 +23,19 @@ function databaseUrl(): string {
   );
 }
 
-function client() {
+// Plain row results: no array mode, no full-result envelope. Spelling the two
+// generics out keeps `rows[0]` and `rows.map(...)` typed instead of collapsing
+// into the query function's union return type.
+type Sql = ReturnType<typeof neon<false, false>>;
+
+function client(): Sql | null {
   const url = databaseUrl();
   if (!url) return null;
   return neon(url);
 }
 
 async function run<T>(
-  fn: (sql: ReturnType<typeof neon>) => Promise<T>,
+  fn: (sql: Sql) => Promise<T>,
   fallback: T
 ): Promise<T> {
   const sql = client();
