@@ -1,15 +1,27 @@
 import { createElement, useEffect, useRef, useState } from "react";
 
-export default function PdfViewer({ src }: { src: string }) {
+export default function PdfViewer({ src, title }: { src: string; title?: string }) {
+  const stageRef = useRef<HTMLDivElement>(null);
   const leftRef = useRef<HTMLCanvasElement>(null);
   const rightRef = useRef<HTMLCanvasElement>(null);
+  const pageInputRef = useRef<HTMLInputElement>(null);
+  const shareRef = useRef<HTMLDivElement>(null);
+
   const [pdf, setPdf] = useState<any>(null);
   const [page, setPage] = useState(1);
   const [numPages, setNumPages] = useState(0);
   const [spread, setSpread] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [stageW, setStageW] = useState(0);
 
+  const [editingPage, setEditingPage] = useState(false);
+  const [pageDraft, setPageDraft] = useState("");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  // Two pages side by side only when there's room for both.
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 900px)");
     const apply = () => setSpread(mq.matches);
@@ -17,6 +29,14 @@ export default function PdfViewer({ src }: { src: string }) {
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
+
+  // Measure the usable width so the pages always fit — no horizontal scroll.
+  useEffect(() => {
+    const measure = () => setStageW(stageRef.current?.clientWidth ?? 0);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [loading, error]);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +68,17 @@ export default function PdfViewer({ src }: { src: string }) {
     };
   }, [src]);
 
+  // Deep link: /posts/<slug>?page=7 opens on that page.
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("page");
+    const n = Number.parseInt(raw ?? "", 10);
+    if (Number.isFinite(n) && n >= 1) setPage(n);
+  }, []);
+
+  useEffect(() => {
+    if (numPages) setPage((p) => Math.min(Math.max(1, p), numPages));
+  }, [numPages]);
+
   const pages = (() => {
     if (!numPages) return [] as number[];
     if (!spread) return [page];
@@ -58,33 +89,42 @@ export default function PdfViewer({ src }: { src: string }) {
   })();
 
   useEffect(() => {
-    if (!pdf) return;
+    if (!pdf || !stageW) return;
     let cancelled = false;
     (async () => {
       const canvases = [leftRef.current, rightRef.current];
+      const maxH = Math.min(window.innerHeight * 0.78, 980);
+      const perPage = spread && pages.length === 2 ? stageW / 2 : stageW;
+      const dpr = window.devicePixelRatio || 1;
+
       for (let i = 0; i < pages.length; i++) {
         const canvas = canvases[i];
         if (!canvas) continue;
         const pdfPage = await pdf.getPage(pages[i]);
         if (cancelled) return;
+
         const base = pdfPage.getViewport({ scale: 1 });
-        const maxH = Math.min(window.innerHeight * 0.78, 980);
-        const maxW = spread && pages.length === 2 ? window.innerWidth * 0.42 : window.innerWidth * 0.86;
-        const scale = Math.min(maxW / base.width, maxH / base.height) * (window.devicePixelRatio || 1);
-        const viewport = pdfPage.getViewport({ scale });
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        canvas.style.width = `${viewport.width / (window.devicePixelRatio || 1)}px`;
-        canvas.style.height = `${viewport.height / (window.devicePixelRatio || 1)}px`;
+        const fit = Math.min(perPage / base.width, maxH / base.height);
+        const cssW = base.width * fit;
+        const cssH = base.height * fit;
+
+        canvas.style.width = `${cssW}px`;
+        canvas.style.height = `${cssH}px`;
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+
         const ctx = canvas.getContext("2d");
         if (!ctx) continue;
-        await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+        await pdfPage.render({
+          canvasContext: ctx,
+          viewport: pdfPage.getViewport({ scale: fit * dpr }),
+        }).promise;
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [pdf, pages.join(","), spread]);
+  }, [pdf, pages.join(","), spread, stageW]);
 
   function go(delta: number) {
     if (!numPages) return;
@@ -105,6 +145,8 @@ export default function PdfViewer({ src }: { src: string }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
       if (e.key === "ArrowRight") go(1);
       if (e.key === "ArrowLeft") go(-1);
     };
@@ -112,10 +154,90 @@ export default function PdfViewer({ src }: { src: string }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const label = pages.length === 2 ? `${pages[0]}–${pages[1]} / ${numPages}` : `${pages[0] || 1} / ${numPages || "…"}`;
+  // Close the share popover on an outside click.
+  useEffect(() => {
+    if (!shareOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (shareRef.current && !shareRef.current.contains(e.target as Node)) setShareOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [shareOpen]);
+
+  const first = pages[0] || 1;
+  const label = pages.length === 2 ? `${pages[0]}–${pages[1]} / ${numPages}` : `${first} / ${numPages || "…"}`;
+
+  function startEditing() {
+    if (!numPages) return;
+    setPageDraft(String(first));
+    setEditingPage(true);
+    requestAnimationFrame(() => pageInputRef.current?.select());
+  }
+
+  function commitPage() {
+    setEditingPage(false);
+    const n = Number.parseInt(pageDraft, 10);
+    if (Number.isFinite(n) && n >= 1) setPage(Math.min(numPages, n));
+  }
+
+  function shareLink() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", String(first));
+    url.hash = "";
+    return url.toString();
+  }
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(shareLink());
+    } catch {
+      // The clipboard API needs a secure context. If it's unavailable, select
+      // the link so the reader can copy it themselves.
+      const input = shareRef.current?.querySelector("input");
+      input?.focus();
+      input?.select();
+      return;
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function download() {
+    if (downloading) return;
+    setDownloading(true);
+    const name = fileName();
+    try {
+      // Fetch as a blob so the download actually saves the file; a bare
+      // cross-origin `download` attribute is ignored by browsers.
+      const res = await fetch(src);
+      if (!res.ok) throw new Error(String(res.status));
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(src, "_blank", "noopener");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  function fileName() {
+    const fromTitle = (title || "").replace(/[:/\\?*"<>|]/g, " ").replace(/\s+/g, " ").trim();
+    if (fromTitle) return `${fromTitle}.pdf`;
+    const last = src.split("?")[0].split("/").pop() || "issue.pdf";
+    return last.toLowerCase().endsWith(".pdf") ? last : `${last}.pdf`;
+  }
+
+  const iconButton =
+    "inline-flex size-11 items-center justify-center rounded-full bg-black text-white text-xl transition hover:scale-105 dark:bg-white dark:text-black disabled:opacity-40";
 
   return (
-    <div className="rounded-3xl bg-neutral-200/80 dark:bg-neutral-900 px-3 py-6 md:px-8 md:py-10">
+    <div className="relative rounded-3xl bg-neutral-200/80 px-3 py-6 dark:bg-neutral-900 md:px-8 md:py-10">
       {loading && (
         <div className="flex min-h-[60vh] items-center justify-center text-lg opacity-60">
           Opening issue…
@@ -126,43 +248,119 @@ export default function PdfViewer({ src }: { src: string }) {
           {error}
         </div>
       )}
+
       <div className={loading || error ? "hidden" : ""}>
-        <div className="flex items-center justify-center gap-0 overflow-x-auto">
+        {/* Zero-height probe: its width is the usable stage width. */}
+        <div ref={stageRef} className="h-0 w-full" aria-hidden="true" />
+
+        <div className="flex items-center justify-center overflow-hidden">
           <canvas
             ref={leftRef}
-            className="bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
+            className="block max-w-full bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
             style={{ borderRadius: pages.length === 1 ? "4px" : "4px 0 0 4px" }}
           />
           {pages.length === 2 && (
             <canvas
               ref={rightRef}
-              className="bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
+              className="block max-w-full bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
               style={{ borderRadius: "0 4px 4px 0" }}
             />
           )}
         </div>
+
         <div className="mt-8 flex items-center justify-center gap-5">
           <button
             type="button"
             onClick={() => go(-1)}
             disabled={page <= 1}
-            className="inline-flex size-12 items-center justify-center rounded-full bg-black text-white text-2xl disabled:opacity-30 dark:bg-white dark:text-black transition hover:scale-105"
+            className={iconButton}
             aria-label="Previous page"
           >
             {createElement("ion-icon", { name: "chevron-back" })}
           </button>
-          <div className="min-w-28 text-center text-sm font-medium tracking-wide opacity-70">
-            {label}
-          </div>
+
+          {editingPage ? (
+            <input
+              ref={pageInputRef}
+              value={pageDraft}
+              onChange={(e) =>
+                // Digits only — no hyphens, so nobody types "2-3".
+                setPageDraft(e.target.value.replace(/\D/g, "").slice(0, String(numPages).length))
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitPage();
+                if (e.key === "Escape") setEditingPage(false);
+              }}
+              onBlur={commitPage}
+              inputMode="numeric"
+              aria-label="Go to page"
+              className="w-24 rounded-lg border border-black/20 bg-white px-2 py-1 text-center text-sm font-medium tabular-nums outline-none focus:border-black/50 dark:border-white/25 dark:bg-neutral-800 dark:focus:border-white/60"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={startEditing}
+              title="Click to jump to a page"
+              className="min-w-24 rounded-lg px-2 py-1 text-center text-sm font-medium tracking-wide tabular-nums opacity-70 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+            >
+              {label}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => go(1)}
             disabled={page >= numPages}
-            className="inline-flex size-12 items-center justify-center rounded-full bg-black text-white text-2xl disabled:opacity-30 dark:bg-white dark:text-black transition hover:scale-105"
+            className={iconButton}
             aria-label="Next page"
           >
             {createElement("ion-icon", { name: "chevron-forward" })}
           </button>
+        </div>
+
+        <div ref={shareRef} className="relative mt-6 flex items-center justify-end gap-3 md:absolute md:bottom-8 md:right-8 md:mt-0">
+          <button
+            type="button"
+            onClick={() => setShareOpen((v) => !v)}
+            className={iconButton}
+            aria-label="Share this page"
+            aria-expanded={shareOpen}
+          >
+            {createElement("ion-icon", { name: "share-social" })}
+          </button>
+          <button
+            type="button"
+            onClick={download}
+            disabled={downloading}
+            className={iconButton}
+            aria-label="Download this issue"
+          >
+            {createElement("ion-icon", { name: downloading ? "hourglass" : "download" })}
+          </button>
+
+          {shareOpen && (
+            <div className="absolute bottom-14 right-0 z-20 w-[min(20rem,80vw)] rounded-2xl border border-black/10 bg-white p-4 text-left shadow-xl dark:border-white/15 dark:bg-neutral-800">
+              <p className="mb-2 text-sm font-semibold">
+                {pages.length === 2 ? `Pages ${pages[0]}–${pages[1]}` : `Page ${first}`}
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={shareLink()}
+                  onFocus={(e) => e.currentTarget.select()}
+                  aria-label="Link to this page"
+                  className="min-w-0 flex-1 rounded-lg border border-black/15 bg-black/5 px-2 py-1.5 text-xs outline-none dark:border-white/15 dark:bg-white/10"
+                />
+                <button
+                  type="button"
+                  onClick={copyLink}
+                  className="shrink-0 rounded-lg bg-black px-3 py-1.5 text-xs font-semibold text-white transition hover:scale-105 dark:bg-white dark:text-black"
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
