@@ -48,6 +48,12 @@ export interface Settings {
   og_image_url: string | null;
 }
 
+export interface ContactRecipient {
+  id: string;
+  email: string;
+  name: string | null;
+}
+
 export interface PageContent {
   title: string;
   body_html: string;

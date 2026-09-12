@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import type {
+  ContactRecipient,
   Extra,
   PageContent,
   Post,
@@ -191,4 +192,23 @@ export async function getPage(
       og_image_url: row.og_image_url == null ? null : asText(row.og_image_url),
     };
   }, fallback);
+}
+
+export async function getContactRecipients(): Promise<ContactRecipient[]> {
+  return run(async (sql) => {
+    const rows = await sql`
+      SELECT id, email, name
+      FROM contact_recipients
+      WHERE active
+      ORDER BY created_at
+    `;
+    return rows.map((row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        id: asText(r.id),
+        email: asText(r.email),
+        name: r.name == null ? null : asText(r.name),
+      };
+    });
+  }, []);
 }
