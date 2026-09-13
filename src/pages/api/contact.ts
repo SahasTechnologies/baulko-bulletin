@@ -5,9 +5,79 @@ import { getContactRecipients } from "@/lib/db";
 export const prerender = false;
 
 // Resend's shared sender works without a verified domain, but it only delivers
-// to the Resend account owner — fine for testing, replace it via RESEND_FROM.
+// to the Resend account owner — RESEND_EMAIL_FROM overrides it in production.
 const DEFAULT_FROM = "Baulko Bulletin <onboarding@resend.dev>";
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
+
+const TURNSTILE_ACTION = "contact";
+const TURNSTILE_ENDPOINT = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
+function allowedTurnstileHostnames() {
+  const configured = (process.env.TURNSTILE_HOSTNAMES || "")
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean);
+  if (configured.length) return configured;
+  // Not configured: accept the known hosts plus local dev.
+  return import.meta.env.PROD
+    ? ["baulko-bulletin.vercel.app", "baulkobulletin.com"]
+    : ["localhost", "127.0.0.1", "baulko-bulletin.vercel.app", "baulkobulletin.com"];
+}
+
+/**
+ * Verifies a Turnstile token. Fails closed: a missing secret, a missing token or
+ * any siteverify error rejects the submission.
+ */
+async function verifyTurnstile(token: string, remoteIp: string | null) {
+  const secret = process.env.TURNSTILE_SECRET;
+  if (!secret) {
+    console.error(
+      "[contact] TURNSTILE_SECRET is not set — rejecting. Add it to the environment to accept submissions."
+    );
+    return { ok: false, reason: "captcha-not-configured" };
+  }
+
+  if (!token || token.length > 2048) {
+    return { ok: false, reason: "captcha-missing" };
+  }
+
+  try {
+    const body = new URLSearchParams({ secret, response: token });
+    if (remoteIp) body.set("remoteip", remoteIp);
+
+    const res = await fetch(TURNSTILE_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      signal: AbortSignal.timeout(10_000),
+      body,
+    });
+    if (!res.ok) throw new Error(`siteverify ${res.status}`);
+
+    const result = (await res.json()) as {
+      success?: boolean;
+      action?: string;
+      hostname?: string;
+      "error-codes"?: string[];
+    };
+
+    if (!result.success) {
+      console.warn("[contact] Turnstile rejected:", result["error-codes"] || "no error codes");
+      return { ok: false, reason: "captcha-failed" };
+    }
+    if (result.action !== TURNSTILE_ACTION) {
+      console.warn(`[contact] Turnstile action mismatch: ${result.action}`);
+      return { ok: false, reason: "captcha-action" };
+    }
+    if (result.hostname && !allowedTurnstileHostnames().includes(result.hostname)) {
+      console.warn(`[contact] Turnstile hostname not allowed: ${result.hostname}`);
+      return { ok: false, reason: "captcha-hostname" };
+    }
+    return { ok: true, reason: "" };
+  } catch (err) {
+    console.error("[contact] Turnstile verification failed:", err);
+    return { ok: false, reason: "captcha-error" };
+  }
+}
 
 function getSql() {
   const url = import.meta.env.DATABASE_URL || process.env.DATABASE_URL;
@@ -71,7 +141,7 @@ async function notifyRecipients(input: { name: string; email: string; message: s
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: process.env.RESEND_FROM || DEFAULT_FROM,
+        from: process.env.RESEND_EMAIL_FROM || DEFAULT_FROM,
         to,
         reply_to: input.email,
         subject: `Contact form: ${input.name}`,
@@ -97,6 +167,7 @@ export const POST: APIRoute = async ({ request }) => {
     let email = "";
     let message = "";
     let website = "";
+    let turnstileToken = "";
 
     if (contentType.includes("application/json")) {
       const body = await request.json();
@@ -104,12 +175,14 @@ export const POST: APIRoute = async ({ request }) => {
       email = String(body.email || "").trim();
       message = String(body.message || "").trim();
       website = String(body.website || "").trim();
+      turnstileToken = String(body["cf-turnstile-response"] || "").trim();
     } else {
       const form = await request.formData();
       name = String(form.get("name") || "").trim();
       email = String(form.get("email") || "").trim();
       message = String(form.get("message") || "").trim();
       website = String(form.get("website") || "").trim();
+      turnstileToken = String(form.get("cf-turnstile-response") || "").trim();
     }
 
     if (website) {
@@ -117,6 +190,22 @@ export const POST: APIRoute = async ({ request }) => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    const forwarded = request.headers.get("x-forwarded-for") || "";
+    const remoteIp = forwarded.split(",")[0]?.trim() || null;
+    const captcha = await verifyTurnstile(turnstileToken, remoteIp);
+    if (!captcha.ok) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error:
+            captcha.reason === "captcha-not-configured"
+              ? "The contact form is temporarily unavailable."
+              : "Verification failed. Please try again.",
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     if (!name || !email || !message) {
