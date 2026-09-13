@@ -7,12 +7,20 @@ export const prerender = false;
 
 const settings = await getSettings();
 const sent = Astro.url.searchParams.get("sent") === "1";
+// Public by design — the sitekey ships in the HTML. The secret stays server-side.
+const turnstileSiteKey =
+  import.meta.env.PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAAEzFFYWu-LrrOV_w";
 ---
 
 <BaseLayout title="Contact" settings={settings}>
+  <script
+    is:inline
+    src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+    async
+    defer></script>
   <div class="container mx-auto px-5">
     <PageHeader brand={settings.title} />
-    <div class="max-w-xl">
+    <div class="mx-auto max-w-xl">
       <h1 class="mb-4 text-5xl font-bold leading-tight tracking-tighter md:text-6xl">
         Contact Us
       </h1>
@@ -76,6 +84,14 @@ const sent = Astro.url.searchParams.get("sent") === "1";
               maxlength="5000"
               class="w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30"
             ></textarea>
+          </div>
+
+          <div
+            class="cf-turnstile"
+            data-sitekey={turnstileSiteKey}
+            data-action="contact"
+            data-theme="auto"
+          >
           </div>
 
           <button
