@@ -194,6 +194,8 @@ export async function getPage(
   }, fallback);
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function getContactRecipients(): Promise<ContactRecipient[]> {
   return run(async (sql) => {
     const rows = await sql`
@@ -202,13 +204,22 @@ export async function getContactRecipients(): Promise<ContactRecipient[]> {
       WHERE active
       ORDER BY created_at
     `;
-    return rows.map((row) => {
+    const recipients: ContactRecipient[] = [];
+    for (const row of rows) {
       const r = row as Record<string, unknown>;
-      return {
+      // Addresses get pasted in, so trim stray whitespace (tabs included — a
+      // trailing tab survives btrim() and makes Resend reject the address).
+      const email = asText(r.email).trim();
+      if (!EMAIL_RE.test(email)) {
+        console.warn(`[db] skipping invalid contact recipient: ${JSON.stringify(email)}`);
+        continue;
+      }
+      recipients.push({
         id: asText(r.id),
-        email: asText(r.email),
-        name: r.name == null ? null : asText(r.name),
-      };
-    });
+        email,
+        name: r.name == null ? null : asText(r.name).trim() || null,
+      });
+    }
+    return recipients;
   }, []);
 }
