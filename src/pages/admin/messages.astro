@@ -1,0 +1,110 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import Flash from "@/components/admin/Flash.astro";
+import { listSubmissions } from "@/lib/admin-db";
+import { flashFromUrl } from "@/lib/admin";
+
+export const prerender = false;
+
+if (!Astro.locals.adminSession) return Astro.redirect("/admin/login");
+
+const csrf = Astro.locals.adminCsrf;
+const flash = flashFromUrl(Astro.url);
+
+let messages: Awaited<ReturnType<typeof listSubmissions>> = [];
+let dbError: string | null = null;
+try {
+  messages = await listSubmissions();
+} catch (err) {
+  dbError = err instanceof Error ? err.message : String(err);
+}
+
+const unread = messages.filter((message) => !message.read).length;
+
+// Same timezone reasoning as the public site: pin Sydney so an operator and a
+// reader never disagree about the day a message arrived.
+const formatter = new Intl.DateTimeFormat("en-AU", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Australia/Sydney",
+});
+
+function received(value: string | null): string {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "—";
+  return `${formatter.format(date)} (Sydney)`;
+}
+---
+
+<AdminLayout title="Messages" current="/admin/messages">
+  {flash && <Flash kind={flash.kind} message={flash.message} />}
+
+  <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">Contact messages</h1>
+  <p class="mb-10 text-lg opacity-70">
+    Submissions from the contact form. {unread} unread of {messages.length}. These are also emailed to
+    the contact list when <code>RESEND_API_KEY</code> is set.
+  </p>
+
+  {dbError && (
+    <div class="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-5">
+      <p class="mb-1 font-semibold">Could not load messages.</p>
+      <p class="font-mono text-sm opacity-80">{dbError}</p>
+    </div>
+  )}
+
+  {
+    messages.length === 0 ? (
+      <p class="rounded-2xl border border-black/10 p-8 text-lg opacity-70 dark:border-white/15">
+        No messages yet.
+      </p>
+    ) : (
+      <div class="space-y-5">
+        {messages.map((message) => (
+          <article
+            class:list={[
+              "rounded-2xl border p-6",
+              message.read ? "border-black/10 dark:border-white/15" : "border-blue-500/50 bg-blue-500/5",
+            ]}
+          >
+            <div class="mb-3 flex flex-wrap items-baseline justify-between gap-3">
+              <div>
+                <span class="text-xl font-bold">
+                  {message.name}
+                  {!message.read && <span class="ml-3 text-sm font-semibold text-blue-700 dark:text-blue-300">NEW</span>}
+                </span>
+                <a href={`mailto:${message.email}`} class="ml-3 underline underline-offset-4 opacity-70">
+                  {message.email}
+                </a>
+              </div>
+              <span class="text-sm opacity-60">{received(message.created_at)}</span>
+            </div>
+            <p class="mb-5 whitespace-pre-line text-pretty text-lg">{message.message}</p>
+            <div class="flex flex-wrap items-center gap-5 text-sm">
+              <form action="/api/admin/messages" method="POST">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="id" value={message.id} />
+                <input type="hidden" name="action" value={message.read ? "unread" : "read"} />
+                <button type="submit" class="underline underline-offset-4">
+                  Mark as {message.read ? "unread" : "read"}
+                </button>
+              </form>
+              <a href={`mailto:${message.email}`} class="underline underline-offset-4">Reply by email</a>
+              <form
+                action="/api/admin/messages"
+                method="POST"
+                onsubmit="return confirm('Delete this message permanently?')"
+              >
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="id" value={message.id} />
+                <input type="hidden" name="action" value="delete" />
+                <button type="submit" class="text-red-700 underline underline-offset-4 dark:text-red-400">
+                  Delete
+                </button>
+              </form>
+            </div>
+          </article>
+        ))}
+      </div>
+    )
+  }
+</AdminLayout>

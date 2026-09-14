@@ -145,16 +145,30 @@ export async function getAllPostSlugs(): Promise<string[]> {
   }, []);
 }
 
+// Extras and puzzles store an author_id, so the byline name has to come from the
+// authors table — `SELECT *` alone leaves `author_name` empty and every story
+// reads "Anonymous".
 export async function getAllExtras(): Promise<Extra[]> {
   return run(async (sql) => {
-    const rows = await sql`SELECT * FROM extras ORDER BY date DESC`;
+    const rows = await sql`
+      SELECT extras.*, authors.name AS author_name
+      FROM extras
+      LEFT JOIN authors ON authors.id = extras.author_id
+      ORDER BY extras.date DESC
+    `;
     return rows.map((row) => mapExtra(row as Record<string, unknown>));
   }, []);
 }
 
 export async function getExtraBySlug(slug: string): Promise<Extra | null> {
   return run(async (sql) => {
-    const rows = await sql`SELECT * FROM extras WHERE slug = ${slug} LIMIT 1`;
+    const rows = await sql`
+      SELECT extras.*, authors.name AS author_name
+      FROM extras
+      LEFT JOIN authors ON authors.id = extras.author_id
+      WHERE extras.slug = ${slug}
+      LIMIT 1
+    `;
     return rows[0] ? mapExtra(rows[0] as Record<string, unknown>) : null;
   }, null);
 }
@@ -168,7 +182,12 @@ export async function getAllExtraSlugs(): Promise<string[]> {
 
 export async function getPuzzles(): Promise<Puzzle[]> {
   return run(async (sql) => {
-    const rows = await sql`SELECT * FROM puzzles ORDER BY date DESC`;
+    const rows = await sql`
+      SELECT puzzles.*, authors.name AS author_name
+      FROM puzzles
+      LEFT JOIN authors ON authors.id = puzzles.author_id
+      ORDER BY puzzles.date DESC
+    `;
     const posts = await sql`SELECT id, slug, title FROM posts`;
     const postsById = new Map<string, { slug: string; title: string }>();
     for (const p of posts as { id: string; slug: string; title: string }[]) {

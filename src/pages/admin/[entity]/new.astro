@@ -1,0 +1,39 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import ContentForm from "@/components/admin/ContentForm.astro";
+import { ENTITIES, isEntityKey } from "@/lib/admin-entities";
+import { listAuthorNames } from "@/lib/admin-db";
+
+export const prerender = false;
+
+if (!Astro.locals.adminSession) return Astro.redirect("/admin/login");
+
+const { entity } = Astro.params;
+if (!isEntityKey(entity)) return Astro.redirect("/admin?error=Unknown+content+type.");
+
+const def = ENTITIES[entity];
+const base = `/admin/${def.key}`;
+const csrf = Astro.locals.adminCsrf;
+
+// Existing author names power the datalist, so a name isn't retyped (and
+// duplicated in the authors table) on every save.
+const authorNames = def.fields.some((field) => field.name === "author_name")
+  ? await listAuthorNames().catch(() => [])
+  : [];
+---
+
+<AdminLayout title={`New ${def.singular}`} current={base}>
+  <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">New {def.singular.toLowerCase()}</h1>
+  <p class="mb-10 text-lg opacity-70">{def.blurb}</p>
+
+  <div class="max-w-4xl">
+    <ContentForm
+      def={def}
+      row={null}
+      csrf={csrf}
+      submitLabel={`Create ${def.singular.toLowerCase()}`}
+      cancelHref={base}
+      authorNames={authorNames}
+    />
+  </div>
+</AdminLayout>

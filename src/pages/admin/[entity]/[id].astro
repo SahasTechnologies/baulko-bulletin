@@ -1,0 +1,85 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import ContentForm from "@/components/admin/ContentForm.astro";
+import Flash from "@/components/admin/Flash.astro";
+import { ENTITIES, isEntityKey } from "@/lib/admin-entities";
+import { getRow, listAuthorNames } from "@/lib/admin-db";
+import { flashFromUrl } from "@/lib/admin";
+
+export const prerender = false;
+
+if (!Astro.locals.adminSession) return Astro.redirect("/admin/login");
+
+const { entity, id } = Astro.params;
+if (!isEntityKey(entity)) return Astro.redirect("/admin?error=Unknown+content+type.");
+
+const def = ENTITIES[entity];
+const base = `/admin/${def.key}`;
+const csrf = Astro.locals.adminCsrf;
+const flash = flashFromUrl(Astro.url);
+
+const row = await getRow(def.key, id ?? "").catch((err) => {
+  console.error("[admin] failed to load row:", err);
+  return null;
+});
+if (!row) {
+  return Astro.redirect(`${base}?error=${encodeURIComponent(`That ${def.singular.toLowerCase()} no longer exists.`)}`);
+}
+
+const authorNames = def.fields.some((field) => field.name === "author_name")
+  ? await listAuthorNames().catch(() => [])
+  : [];
+const preview = def.publicHref(row);
+---
+
+<AdminLayout title={`Edit ${def.singular}`} current={base}>
+  {flash && <Flash kind={flash.kind} message={flash.message} />}
+
+  <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="text-sm opacity-60">{def.plural}</p>
+      <h1 class="text-5xl font-bold leading-tight tracking-tighter">{row.title}</h1>
+    </div>
+    {preview && (
+      <a
+        href={preview}
+        target="_blank"
+        rel="noreferrer"
+        class="inline-flex items-center gap-2 underline underline-offset-4 opacity-70 hover:opacity-100"
+      >
+        <ion-icon name="open-outline"></ion-icon>
+        View on site
+      </a>
+    )}
+  </div>
+
+  <div class="max-w-4xl">
+    <ContentForm
+      def={def}
+      row={row}
+      csrf={csrf}
+      submitLabel="Save changes"
+      cancelHref={base}
+      authorNames={authorNames}
+    />
+  </div>
+
+  <form
+    action="/api/admin/content"
+    method="POST"
+    class="mt-14 border-t border-black/10 pt-6 dark:border-white/10"
+    onsubmit={`return confirm('Delete “${row.title}”? This cannot be undone.')`}
+  >
+    <input type="hidden" name="csrf" value={csrf} />
+    <input type="hidden" name="entity" value={def.key} />
+    <input type="hidden" name="action" value="delete" />
+    <input type="hidden" name="id" value={row.id} />
+    <button
+      type="submit"
+      class="inline-flex items-center gap-2 rounded-full border border-red-500/50 px-6 py-2 text-lg text-red-700 transition-transform hover:scale-105 dark:text-red-400"
+    >
+      <ion-icon name="trash"></ion-icon>
+      Delete this {def.singular.toLowerCase()}
+    </button>
+  </form>
+</AdminLayout>

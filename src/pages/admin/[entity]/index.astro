@@ -1,0 +1,141 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import Flash from "@/components/admin/Flash.astro";
+import { ENTITIES, isEntityKey, type ContentRow } from "@/lib/admin-entities";
+import { listRows } from "@/lib/admin-db";
+import { flashFromUrl, isoToDateInput } from "@/lib/admin";
+
+export const prerender = false;
+
+if (!Astro.locals.adminSession) return Astro.redirect("/admin/login");
+
+const { entity } = Astro.params;
+if (!isEntityKey(entity)) return Astro.redirect("/admin?error=Unknown+content+type.");
+
+const def = ENTITIES[entity];
+const base = `/admin/${def.key}`;
+const flash = flashFromUrl(Astro.url);
+const csrf = Astro.locals.adminCsrf;
+
+let rows: ContentRow[] = [];
+let dbError: string | null = null;
+try {
+  rows = await listRows(def.key);
+} catch (err) {
+  dbError = err instanceof Error ? err.message : String(err);
+}
+
+function cell(row: ContentRow, field: string): string {
+  if (field === "date") return isoToDateInput(row.date);
+  const value = row[field];
+  return value == null || value === "" ? "—" : value;
+}
+---
+
+<AdminLayout title={def.plural} current={base}>
+  {flash && <Flash kind={flash.kind} message={flash.message} />}
+
+  {dbError && (
+    <div class="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-5">
+      <p class="mb-1 font-semibold">Could not load {def.plural.toLowerCase()}.</p>
+      <p class="font-mono text-sm opacity-80">{dbError}</p>
+    </div>
+  )}
+
+  <div class="mb-8 flex flex-wrap items-end justify-between gap-5">
+    <div>
+      <h1 class="text-5xl font-bold leading-tight tracking-tighter">{def.plural}</h1>
+      <p class="mt-2 text-lg opacity-70">{def.blurb}</p>
+    </div>
+    <a
+      href={`${base}/new`}
+      class="inline-flex items-center gap-2 rounded-full bg-black px-7 py-3 text-lg font-bold text-white transition-transform hover:scale-105 dark:bg-white dark:text-black"
+    >
+      <ion-icon name="add"></ion-icon>
+      New {def.singular.toLowerCase()}
+    </a>
+  </div>
+
+  {
+    rows.length === 0 ? (
+      <p class="rounded-2xl border border-black/10 p-8 text-lg opacity-70 dark:border-white/15">
+        No {def.plural.toLowerCase()} yet.
+      </p>
+    ) : (
+      <div class="overflow-x-auto rounded-2xl border border-black/10 dark:border-white/15">
+        <table class="w-full border-collapse text-left">
+          <thead class="bg-black/5 text-sm dark:bg-white/5">
+            <tr>
+              {def.columns.map((column) => (
+                <th scope="col" class="px-5 py-3 font-semibold">
+                  {column.label}
+                </th>
+              ))}
+              <th scope="col" class="px-5 py-3 font-semibold">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const preview = def.publicHref(row);
+              return (
+                <tr class="border-t border-black/10 align-middle dark:border-white/10">
+                  {def.columns.map((column) => (
+                    <td class="px-5 py-4">
+                      {column.field === "title" ? (
+                        <a href={`${base}/${row.id}`} class="font-semibold hover:underline">
+                          {cell(row, "title")}
+                        </a>
+                      ) : (
+                        <span class="opacity-80">{cell(row, column.field)}</span>
+                      )}
+                    </td>
+                  ))}
+                  <td class="px-5 py-4">
+                    <div class="flex items-center gap-4 whitespace-nowrap">
+                      <a href={`${base}/${row.id}`} class="underline underline-offset-4">
+                        Edit
+                      </a>
+                      {preview && (
+                        <a
+                          href={preview}
+                          target="_blank"
+                          rel="noreferrer"
+                          class="underline underline-offset-4 opacity-70 hover:opacity-100"
+                        >
+                          View
+                        </a>
+                      )}
+                      <form
+                        action="/api/admin/content"
+                        method="POST"
+                        onsubmit={`return confirm('Delete “${cell(row, "title")}”? This cannot be undone.')`}
+                      >
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="entity" value={def.key} />
+                        <input type="hidden" name="action" value="delete" />
+                        <input type="hidden" name="id" value={row.id} />
+                        <button
+                          type="submit"
+                          class="text-red-700 underline underline-offset-4 dark:text-red-400"
+                        >
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  <p class="mt-6 text-sm opacity-60">
+    {rows.length} {rows.length === 1 ? def.singular.toLowerCase() : def.plural.toLowerCase()} · sorted
+    newest first
+  </p>
+</AdminLayout>
