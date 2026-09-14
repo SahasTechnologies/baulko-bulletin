@@ -1,0 +1,22 @@
+---
+import type { FlashKind } from "@/lib/admin";
+
+interface Props {
+  kind: FlashKind;
+  message: string;
+}
+
+const { kind, message } = Astro.props;
+---
+
+<div
+  class:list={[
+    "mb-8 rounded-2xl px-5 py-4",
+    kind === "error"
+      ? "border border-red-500/40 bg-red-500/10"
+      : "border border-emerald-500/40 bg-emerald-500/10",
+  ]}
+  role={kind === "error" ? "alert" : "status"}
+>
+  {message}
+</div>

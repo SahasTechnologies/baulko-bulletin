@@ -1,0 +1,166 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import Flash from "@/components/admin/Flash.astro";
+import { flashFromUrl } from "@/lib/admin";
+import { adminPassword, adminConfigured } from "@/lib/auth";
+import { getCounts, listAuthorCount, type AdminCounts } from "@/lib/admin-db";
+
+export const prerender = false;
+
+if (!Astro.locals.adminSession) return Astro.redirect("/admin/login");
+
+const flash = flashFromUrl(Astro.url);
+
+let counts: AdminCounts | null = null;
+let authors = 0;
+let dbError: string | null = null;
+try {
+  counts = await getCounts();
+  authors = await listAuthorCount();
+} catch (err) {
+  dbError = err instanceof Error ? err.message : String(err);
+}
+
+const configured = adminConfigured();
+const weakPassword = configured && adminPassword().length < 12;
+const dedicatedSecret = Boolean(process.env.ADMIN_SESSION_SECRET);
+
+const cards = [
+  {
+    href: "/admin/posts",
+    label: "Issues",
+    value: counts?.posts ?? 0,
+    note: "Latest issue + Previous Issues on the home page",
+    action: "New issue",
+    icon: "newspaper",
+  },
+  {
+    href: "/admin/extras",
+    label: "Extras",
+    value: counts?.extras ?? 0,
+    note: "Stories and illustrations outside a numbered issue",
+    action: "New extra",
+    icon: "color-wand",
+  },
+  {
+    href: "/admin/puzzles",
+    label: "Puzzles",
+    value: counts?.puzzles ?? 0,
+    note: "Crosswords, find-a-words and unscrambles",
+    action: "New puzzle",
+    icon: "extension-puzzle",
+  },
+];
+---
+
+<AdminLayout title="Dashboard" current="/admin">
+  {flash && <Flash kind={flash.kind} message={flash.message} />}
+
+  {
+    !configured && (
+      <div class="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-5">
+        <p class="mb-1 font-semibold">ADMIN_PASSWORD is not set.</p>
+        <p class="opacity-80">
+          Add it to <code>.env</code> locally and to the Vercel project's environment variables, then
+          redeploy. Logins are rejected until then.
+        </p>
+      </div>
+    )
+  }
+
+  {weakPassword && (
+    <p class="mb-8 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-6 py-5">
+      ADMIN_PASSWORD is shorter than 12 characters — consider a long random passphrase.
+    </p>
+  )}
+
+  {dbError && (
+    <div class="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-5">
+      <p class="mb-1 font-semibold">Could not read the database.</p>
+      <p class="font-mono text-sm opacity-80">{dbError}</p>
+    </div>
+  )}
+
+  <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">Dashboard</h1>
+  <p class="mb-10 text-lg opacity-70">
+    Everything published on the public site comes from here.
+  </p>
+
+  <div class="mb-12 grid gap-6 md:grid-cols-3">
+    {
+      cards.map((card) => (
+        <article class="flex flex-col rounded-2xl border border-black/10 p-6 dark:border-white/15">
+          <div class="mb-3 flex items-center gap-2 text-lg font-medium opacity-70">
+            <ion-icon name={card.icon}></ion-icon>
+            {card.label}
+          </div>
+          <div class="text-5xl font-black tracking-tighter">{card.value}</div>
+          <p class="mt-2 grow text-sm opacity-60">{card.note}</p>
+          <div class="mt-5 flex items-center gap-4">
+            <a href={card.href} class="underline underline-offset-4">Manage</a>
+            <a href={`${card.href}/new`} class="opacity-70 hover:opacity-100">+ {card.action}</a>
+          </div>
+        </article>
+      ))
+    }
+  </div>
+
+  <div class="grid gap-6 md:grid-cols-3">
+    <a
+      href="/admin/messages"
+      class="flex items-center justify-between rounded-2xl border border-black/10 p-6 transition-transform hover:scale-[1.02] dark:border-white/15"
+    >
+      <span class="flex items-center gap-2 text-lg">
+        <ion-icon name="mail"></ion-icon>
+        Contact messages
+      </span>
+      <span class="text-3xl font-black tracking-tighter">{counts?.unread ?? 0}</span>
+    </a>
+    <a
+      href="/admin/pages"
+      class="flex items-center justify-between rounded-2xl border border-black/10 p-6 transition-transform hover:scale-[1.02] dark:border-white/15"
+    >
+      <span class="flex items-center gap-2 text-lg">
+        <ion-icon name="document-text"></ion-icon>
+        About / FAQ / Join
+      </span>
+      <span class="opacity-60">Edit</span>
+    </a>
+    <a
+      href="/admin/settings"
+      class="flex items-center justify-between rounded-2xl border border-black/10 p-6 transition-transform hover:scale-[1.02] dark:border-white/15"
+    >
+      <span class="flex items-center gap-2 text-lg">
+        <ion-icon name="options"></ion-icon>
+        Site settings
+      </span>
+      <span class="text-3xl font-black tracking-tighter">{authors}<span class="ml-2 text-sm font-medium opacity-60">authors</span></span>
+    </a>
+  </div>
+
+  <section class="mt-14 rounded-2xl border border-black/10 p-6 text-sm dark:border-white/15">
+    <h2 class="mb-4 text-lg font-semibold">Security</h2>
+    <ul class="space-y-2 opacity-80">
+      <li>
+        <ion-icon name={dedicatedSecret ? "checkmark-circle" : "information-circle"}></ion-icon>
+        Session signing key:
+        {dedicatedSecret
+          ? "ADMIN_SESSION_SECRET is set."
+          : "derived from ADMIN_PASSWORD — set ADMIN_SESSION_SECRET to rotate sessions independently."}
+      </li>
+      <li>
+        <ion-icon name="shield-checkmark"></ion-icon>
+        Sessions are HttpOnly, SameSite=Strict cookies, valid for 12 hours and renewed while you work.
+      </li>
+      <li>
+        <ion-icon name="finger-print"></ion-icon>
+        Writes need the session cookie plus a per-session CSRF token; cross-origin submits are
+        rejected.
+      </li>
+      <li>
+        <ion-icon name="hourglass"></ion-icon>
+        Logins are rate limited per IP (8 failures per 10 minutes) with a delay on every failure.
+      </li>
+    </ul>
+  </section>
+</AdminLayout>

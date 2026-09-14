@@ -1,0 +1,103 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import Flash from "@/components/admin/Flash.astro";
+import { getPageRow } from "@/lib/admin-db";
+import { escapeHtml, flashFromUrl } from "@/lib/admin";
+
+export const prerender = false;
+
+if (!Astro.locals.adminSession) return Astro.redirect("/admin/login");
+
+const { slug } = Astro.params;
+const csrf = Astro.locals.adminCsrf;
+const flash = flashFromUrl(Astro.url);
+
+const page = slug ? await getPageRow(slug).catch(() => null) : null;
+if (!page) return Astro.redirect("/admin/pages?error=That+page+does+not+exist.");
+
+const inputClass =
+  "w-full rounded-xl border border-black/15 bg-white px-4 py-3 text-lg dark:border-white/15 dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30";
+---
+
+<AdminLayout title={`Edit ${page.title}`} current="/admin/pages">
+  {flash && <Flash kind={flash.kind} message={flash.message} />}
+
+  <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="text-sm opacity-60">Page · /{page.slug}</p>
+      <h1 class="text-5xl font-bold leading-tight tracking-tighter">{page.title}</h1>
+    </div>
+    <a
+      href={`/${page.slug}`}
+      target="_blank"
+      rel="noreferrer"
+      class="inline-flex items-center gap-2 underline underline-offset-4 opacity-70 hover:opacity-100"
+    >
+      <ion-icon name="open-outline"></ion-icon>
+      View on site
+    </a>
+  </div>
+
+  <form action="/api/admin/pages" method="POST" class="max-w-4xl space-y-6">
+    <input type="hidden" name="csrf" value={csrf} />
+    <input type="hidden" name="slug" value={page.slug} />
+
+    <div>
+      <label for="title" class="mb-1 block text-sm font-medium">Title</label>
+      <input
+        id="title"
+        name="title"
+        type="text"
+        required
+        maxlength="200"
+        value={page.title}
+        class={inputClass}
+      />
+      <p class="mt-1 text-sm opacity-60">Used as the browser tab title and page heading.</p>
+    </div>
+
+    <div>
+      <label for="og_image_url" class="mb-1 block text-sm font-medium">
+        Social preview image URL
+      </label>
+      <input
+        id="og_image_url"
+        name="og_image_url"
+        type="text"
+        inputmode="url"
+        maxlength="2000"
+        value={page.og_image_url ?? ""}
+        placeholder="https://ik.imagekit.io/…"
+        class={inputClass}
+      />
+      <p class="mt-1 text-sm opacity-60">Shown when the page is shared on social media.</p>
+    </div>
+
+    <div>
+      <label for="body_html" class="mb-1 block text-sm font-medium">Body (HTML)</label>
+      <textarea
+        id="body_html"
+        name="body_html"
+        rows="22"
+        maxlength="200000"
+        class={`${inputClass} font-mono text-base`}
+        set:html={escapeHtml(page.body_html)}
+      />
+      <p class="mt-1 text-sm leading-relaxed opacity-60">
+        HTML, not Markdown. Headings, paragraphs, links and images all work — e.g.
+        <code>&lt;h2&gt;Our team&lt;/h2&gt;&lt;p&gt;…&lt;/p&gt;</code>
+      </p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-4">
+      <button
+        type="submit"
+        class="inline-flex items-center gap-2 rounded-full bg-black px-8 py-3 text-lg font-bold text-white transition-transform hover:scale-105 dark:bg-white dark:text-black"
+      >
+        <ion-icon name="save"></ion-icon>
+        Save page
+      </button>
+      <a href="/admin/pages" class="underline underline-offset-4 opacity-70 hover:opacity-100">Back</a>
+    </div>
+  </form>
+</AdminLayout>

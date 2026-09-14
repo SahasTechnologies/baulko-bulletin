@@ -1,0 +1,55 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import Flash from "@/components/admin/Flash.astro";
+import { listPages } from "@/lib/admin-db";
+import { flashFromUrl } from "@/lib/admin";
+
+export const prerender = false;
+
+if (!Astro.locals.adminSession) return Astro.redirect("/admin/login");
+
+const flash = flashFromUrl(Astro.url);
+
+let pages: Awaited<ReturnType<typeof listPages>> = [];
+let dbError: string | null = null;
+try {
+  pages = await listPages();
+} catch (err) {
+  dbError = err instanceof Error ? err.message : String(err);
+}
+---
+
+<AdminLayout title="Pages" current="/admin/pages">
+  {flash && <Flash kind={flash.kind} message={flash.message} />}
+
+  <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">Pages</h1>
+  <p class="mb-10 text-lg opacity-70">
+    Body content is HTML. The public site serves About, FAQ and Join from this table.
+  </p>
+
+  {dbError && (
+    <div class="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-5">
+      <p class="mb-1 font-semibold">Could not load pages.</p>
+      <p class="font-mono text-sm opacity-80">{dbError}</p>
+    </div>
+  )}
+
+  <div class="grid gap-5 md:grid-cols-3">
+    {
+      pages.map((page) => (
+        <a
+          href={`/admin/pages/${page.slug}`}
+          class="flex flex-col rounded-2xl border border-black/10 p-6 transition-transform hover:scale-[1.02] dark:border-white/15"
+        >
+          <span class="text-sm opacity-60">/ {page.slug}</span>
+          <span class="mb-3 text-2xl font-bold tracking-tight">{page.title}</span>
+          <span class="grow text-sm opacity-60">
+            {page.body_html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140) ||
+              "Empty — add some content."}
+          </span>
+          <span class="mt-5 underline underline-offset-4">Edit</span>
+        </a>
+      ))
+    }
+  </div>
+</AdminLayout>

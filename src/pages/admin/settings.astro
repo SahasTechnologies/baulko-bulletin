@@ -1,0 +1,100 @@
+---
+import AdminLayout from "@/layouts/AdminLayout.astro";
+import Flash from "@/components/admin/Flash.astro";
+import { getSettingsRow } from "@/lib/admin-db";
+import { escapeHtml, flashFromUrl } from "@/lib/admin";
+
+export const prerender = false;
+
+if (!Astro.locals.adminSession) return Astro.redirect("/admin/login");
+
+const csrf = Astro.locals.adminCsrf;
+const flash = flashFromUrl(Astro.url);
+const settings = await getSettingsRow();
+
+const inputClass =
+  "w-full rounded-xl border border-black/15 bg-white px-4 py-3 text-lg dark:border-white/15 dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30";
+---
+
+<AdminLayout title="Settings" current="/admin/settings">
+  {flash && <Flash kind={flash.kind} message={flash.message} />}
+
+  <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">Site settings</h1>
+  <p class="mb-10 text-lg opacity-70">
+    The title, description and footer used on every page, plus the default social preview.
+  </p>
+
+  <form action="/api/admin/settings" method="POST" class="max-w-4xl space-y-6">
+    <input type="hidden" name="csrf" value={csrf} />
+
+    <div>
+      <label for="title" class="mb-1 block text-sm font-medium">Site title</label>
+      <input
+        id="title"
+        name="title"
+        type="text"
+        required
+        maxlength="200"
+        value={settings.title}
+        class={inputClass}
+      />
+      <p class="mt-1 text-sm opacity-60">Shown in the home page heading, headers and browser tabs.</p>
+    </div>
+
+    <div>
+      <label for="description" class="mb-1 block text-sm font-medium">Site description</label>
+      <textarea
+        id="description"
+        name="description"
+        rows="3"
+        maxlength="600"
+        class={inputClass}
+        set:html={escapeHtml(settings.description)}
+      />
+      <p class="mt-1 text-sm opacity-60">The tagline under the logo and the default meta description.</p>
+    </div>
+
+    <div>
+      <label for="og_image_url" class="mb-1 block text-sm font-medium">
+        Default social preview image URL
+      </label>
+      <input
+        id="og_image_url"
+        name="og_image_url"
+        type="text"
+        inputmode="url"
+        maxlength="2000"
+        value={settings.og_image_url ?? ""}
+        placeholder="https://ik.imagekit.io/…"
+        class={inputClass}
+      />
+    </div>
+
+    <div>
+      <label for="footer_html" class="mb-1 block text-sm font-medium">Footer (HTML)</label>
+      <textarea
+        id="footer_html"
+        name="footer_html"
+        rows="10"
+        maxlength="200000"
+        placeholder="Leave blank for the default “Join the Bulletin” footer"
+        class={`${inputClass} font-mono text-base`}
+        set:html={escapeHtml(settings.footer_html ?? "")}
+      />
+      <p class="mt-1 text-sm leading-relaxed opacity-60">
+        Leave blank to keep the built-in footer (join details, contact button and credits).
+      </p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-4">
+      <button
+        type="submit"
+        class="inline-flex items-center gap-2 rounded-full bg-black px-8 py-3 text-lg font-bold text-white transition-transform hover:scale-105 dark:bg-white dark:text-black"
+      >
+        <ion-icon name="save"></ion-icon>
+        Save settings
+      </button>
+      <a href="/admin" class="underline underline-offset-4 opacity-70 hover:opacity-100">Back</a>
+    </div>
+  </form>
+</AdminLayout>

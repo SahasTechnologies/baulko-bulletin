@@ -1,0 +1,106 @@
+---
+import { escapeHtml, isoToDateInput, maxLengthFor } from "@/lib/admin";
+import type { ContentRow, EntityDef } from "@/lib/admin-entities";
+
+interface Props {
+  def: EntityDef;
+  /** Existing row to edit, or null when creating. */
+  row: ContentRow | null;
+  csrf: string;
+  submitLabel: string;
+  cancelHref: string;
+  authorNames?: string[];
+}
+
+const { def, row, csrf, submitLabel, cancelHref, authorNames = [] } = Astro.props;
+
+const inputClass =
+  "w-full rounded-xl border border-black/15 bg-white px-4 py-3 text-lg dark:border-white/15 dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30";
+
+function valueFor(name: string): string {
+  if (name === "date") return isoToDateInput(row?.date);
+  return row?.[name] ?? "";
+}
+---
+
+<form action={`/api/admin/content`} method="POST" class="grid gap-6 md:grid-cols-2">
+  <input type="hidden" name="csrf" value={csrf} />
+  <input type="hidden" name="entity" value={def.key} />
+  <input type="hidden" name="action" value={row ? "update" : "create"} />
+  {row && <input type="hidden" name="id" value={row.id} />}
+
+  {
+    def.fields.map((field) => {
+      const id = `${def.key}-${field.name}`;
+      const value = valueFor(field.name);
+      return (
+        <div class:list={["flex flex-col", field.full && "md:col-span-2"]}>
+          <label for={id} class="mb-1 block text-sm font-medium">
+            {field.label}
+            {field.required && <span class="opacity-50"> (required)</span>}
+          </label>
+
+          {field.type === "textarea" ? (
+            // set:html rather than a child expression: template indentation would
+            // otherwise become part of the textarea's value.
+            <textarea
+              id={id}
+              name={field.name}
+              rows={field.rows ?? 6}
+              required={field.required}
+              placeholder={field.placeholder}
+              maxlength={field.maxLength ?? maxLengthFor(field.name)}
+              class={`${inputClass} font-mono text-base`}
+              set:html={escapeHtml(value)}
+            />
+          ) : field.type === "select" ? (
+            <select id={id} name={field.name} required={field.required} class={inputClass}>
+              {(field.options ?? []).map((option) => (
+                <option value={option} selected={option === value}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id={id}
+              name={field.name}
+              type={field.type === "date" ? "date" : "text"}
+              inputmode={field.type === "url" ? "url" : undefined}
+              value={value}
+              required={field.required}
+              placeholder={field.placeholder}
+              maxlength={field.maxLength ?? maxLengthFor(field.name)}
+              list={field.name === "author_name" && authorNames.length ? "admin-author-names" : undefined}
+              autocomplete={field.name === "author_name" ? "off" : undefined}
+              class={inputClass}
+            />
+          )}
+
+          {field.help && (
+            <p class="mt-1 text-sm leading-relaxed opacity-60 whitespace-pre-line">{field.help}</p>
+          )}
+        </div>
+      );
+    })
+  }
+
+  <div class="flex flex-wrap items-center gap-4 md:col-span-2">
+    <button
+      type="submit"
+      class="inline-flex items-center gap-2 rounded-full bg-black px-8 py-3 text-lg font-bold text-white transition-transform hover:scale-105 dark:bg-white dark:text-black"
+    >
+      <ion-icon name="save"></ion-icon>
+      {submitLabel}
+    </button>
+    <a href={cancelHref} class="underline underline-offset-4 opacity-70 hover:opacity-100">Cancel</a>
+  </div>
+</form>
+
+{authorNames.length > 0 && (
+  <datalist id="admin-author-names">
+    {authorNames.map((name) => (
+      <option value={name}></option>
+    ))}
+  </datalist>
+)}

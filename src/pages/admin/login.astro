@@ -1,0 +1,101 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { getSettings } from "@/lib/db";
+import { adminConfigured, adminPassword } from "@/lib/auth";
+import { flashFromUrl, safeAdminPath } from "@/lib/admin";
+
+export const prerender = false;
+
+// Middleware has already resolved the session for this request.
+if (Astro.locals.adminSession) {
+  return Astro.redirect("/admin");
+}
+
+const settings = await getSettings();
+const configured = adminConfigured();
+const weakPassword = configured && adminPassword().length < 12;
+const flash = flashFromUrl(Astro.url);
+const next = safeAdminPath(Astro.url.searchParams.get("next"));
+const inputClass =
+  "w-full rounded-xl border border-black/15 dark:border-white/15 dark:bg-neutral-900 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30";
+---
+
+<BaseLayout title="Admin" settings={settings}>
+  <div class="container mx-auto px-5">
+    <div class="mx-auto mt-20 max-w-md">
+      <div class="mb-8 flex items-center gap-3">
+        <img alt="Bulletin logo" class="size-[52px]" height={350} width={350} src="/bulletin.png" />
+        <div>
+          <h1 class="text-3xl font-bold leading-tight tracking-tighter">Bulletin Admin</h1>
+          <p class="opacity-70">Staff access only.</p>
+        </div>
+      </div>
+
+      {
+        !configured ? (
+          <div class="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-6 py-5 text-lg">
+            <p class="mb-2 font-semibold">Admin is not configured.</p>
+            <p class="opacity-80">
+              Set <code>ADMIN_PASSWORD</code> in the environment (and in your Vercel project
+              settings) to switch the panel on. Until then every login is rejected.
+            </p>
+          </div>
+        ) : (
+          <>
+            {flash && (
+              <div
+                class:list={[
+                  "mb-6 rounded-2xl px-5 py-4",
+                  flash.kind === "error"
+                    ? "border border-red-500/40 bg-red-500/10"
+                    : "border border-emerald-500/40 bg-emerald-500/10",
+                ]}
+                role={flash.kind === "error" ? "alert" : "status"}
+              >
+                {flash.message}
+              </div>
+            )}
+
+            {weakPassword && (
+              <p class="mb-6 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-5 py-4 text-sm">
+                Heads up: <code>ADMIN_PASSWORD</code> is shorter than 12 characters. Use a long
+                random passphrase.
+              </p>
+            )}
+
+            <form action="/api/admin/login" method="POST" class="space-y-5">
+              <input type="hidden" name="next" value={next} />
+              <div>
+                <label for="password" class="mb-1 block text-sm font-medium">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  name="password"
+                  required
+                  autofocus
+                  autocomplete="current-password"
+                  maxlength="512"
+                  class={inputClass}
+                />
+              </div>
+              <button
+                type="submit"
+                class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-black py-3 px-8 text-lg font-bold text-white transition-transform hover:scale-[1.02] dark:bg-white dark:text-black"
+              >
+                <ion-icon name="lock-closed"></ion-icon>
+                Sign in
+              </button>
+            </form>
+          </>
+        )
+      }
+
+      <p class="mt-10 text-sm opacity-60">
+        Runs over the whole <code>/admin</code> area and its API. Sessions last 12 hours and are
+        signed with <code>ADMIN_SESSION_SECRET</code> when set.
+      </p>
+    </div>
+  </div>
+</BaseLayout>
