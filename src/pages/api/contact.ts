@@ -25,16 +25,21 @@ function allowedTurnstileHostnames() {
 }
 
 /**
- * Verifies a Turnstile token. Fails closed: a missing secret, a missing token or
- * any siteverify error rejects the submission.
+ * Verifies a Turnstile token.
+ *
+ * Unconfigured (no TURNSTILE_SECRET) is treated as "CAPTCHA not switched on yet":
+ * the submission is accepted and a loud warning is logged, so a missing env var
+ * never takes the contact form down. Once the secret is set, every submission is
+ * verified and a bad or missing token is rejected.
  */
 async function verifyTurnstile(token: string, remoteIp: string | null) {
   const secret = process.env.TURNSTILE_SECRET;
   if (!secret) {
-    console.error(
-      "[contact] TURNSTILE_SECRET is not set — rejecting. Add it to the environment to accept submissions."
+    console.warn(
+      "[contact] TURNSTILE_SECRET is not set — accepting this submission WITHOUT captcha verification. " +
+        "Set TURNSTILE_SECRET to switch Turnstile on."
     );
-    return { ok: false, reason: "captcha-not-configured" };
+    return { ok: true, reason: "captcha-not-configured" };
   }
 
   if (!token || token.length > 2048) {
@@ -197,13 +202,7 @@ export const POST: APIRoute = async ({ request }) => {
     const captcha = await verifyTurnstile(turnstileToken, remoteIp);
     if (!captcha.ok) {
       return new Response(
-        JSON.stringify({
-          ok: false,
-          error:
-            captcha.reason === "captcha-not-configured"
-              ? "The contact form is temporarily unavailable."
-              : "Verification failed. Please try again.",
-        }),
+        JSON.stringify({ ok: false, error: "Verification failed. Please try again." }),
         { status: 403, headers: { "Content-Type": "application/json" } }
       );
     }
