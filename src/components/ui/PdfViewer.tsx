@@ -4,8 +4,14 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   const stageRef = useRef<HTMLDivElement>(null);
   const leftRef = useRef<HTMLCanvasElement>(null);
   const rightRef = useRef<HTMLCanvasElement>(null);
+  const leftWrapRef = useRef<HTMLDivElement>(null);
+  const rightWrapRef = useRef<HTMLDivElement>(null);
+  const leftTextRef = useRef<HTMLDivElement>(null);
+  const rightTextRef = useRef<HTMLDivElement>(null);
   const pageInputRef = useRef<HTMLInputElement>(null);
   const shareRef = useRef<HTMLDivElement>(null);
+  // The loaded pdf.js module, so the render effect can build text layers.
+  const pdfjsRef = useRef<any>(null);
 
   const [pdf, setPdf] = useState<any>(null);
   const [page, setPage] = useState(1);
@@ -13,6 +19,9 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   const [spread, setSpread] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  // A canvas is 300x150 until we size it, so keep the placeholder up until the
+  // first page has actually been painted — otherwise the page flashes tiny.
+  const [painted, setPainted] = useState(false);
   const [stageW, setStageW] = useState(0);
 
   const [editingPage, setEditingPage] = useState(false);
@@ -43,6 +52,7 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     (async () => {
       try {
         const pdfjs = await import("pdfjs-dist");
+        pdfjsRef.current = pdfjs;
         const cdn = `https://unpkg.com/pdfjs-dist@${pdfjs.version}`;
         pdfjs.GlobalWorkerOptions.workerSrc = `${cdn}/build/pdf.worker.min.mjs`;
         const doc = await pdfjs.getDocument({
@@ -93,6 +103,7 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     let cancelled = false;
     (async () => {
       const canvases = [leftRef.current, rightRef.current];
+      const textDivs = [leftTextRef.current, rightTextRef.current];
       const maxH = Math.min(window.innerHeight * 0.78, 980);
       const perPage = spread && pages.length === 2 ? stageW / 2 : stageW;
       const dpr = window.devicePixelRatio || 1;
@@ -119,7 +130,29 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
           canvasContext: ctx,
           viewport: pdfPage.getViewport({ scale: fit * dpr }),
         }).promise;
+
+        // Transparent text over the canvas, so text can be selected and copied.
+        const textDiv = textDivs[i];
+        const pdfjs = pdfjsRef.current;
+        if (textDiv && pdfjs?.TextLayer) {
+          const layer = new pdfjs.TextLayer({
+            textContentSource: pdfPage.streamTextContent(),
+            container: textDiv,
+            viewport: pdfPage.getViewport({ scale: fit }),
+          });
+          textDiv.replaceChildren();
+          try {
+            await layer.render();
+          } catch (e) {
+            console.error("[pdf] text layer failed:", e);
+          }
+          if (cancelled) {
+            layer.cancel();
+            return;
+          }
+        }
       }
+      if (!cancelled) setPainted(true);
     })();
     return () => {
       cancelled = true;
@@ -249,22 +282,34 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
         </div>
       )}
 
-      <div className={loading || error ? "hidden" : ""}>
-        {/* Zero-height probe: its width is the usable stage width. */}
-        <div ref={stageRef} className="h-0 w-full" aria-hidden="true" />
+      {/* Zero-height probe: its width is the usable stage width. It must stay
+          OUTSIDE the container below, since a display:none element reports a
+          clientWidth of 0 — which would deadlock the first render. */}
+      <div ref={stageRef} className="h-0 w-full" aria-hidden="true" />
 
+      <div className={loading || error || !painted ? "hidden" : ""}>
         <div className="flex items-center justify-center overflow-hidden">
-          <canvas
-            ref={leftRef}
-            className="block max-w-full bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
+          <div
+            ref={leftWrapRef}
+            className="relative shrink-0"
             style={{ borderRadius: pages.length === 1 ? "4px" : "4px 0 0 4px" }}
-          />
-          {pages.length === 2 && (
+          >
             <canvas
-              ref={rightRef}
-              className="block max-w-full bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
-              style={{ borderRadius: "0 4px 4px 0" }}
+              ref={leftRef}
+              className="block bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
+              style={{ borderRadius: "inherit" }}
             />
+            <div ref={leftTextRef} className="pdfTextLayer" />
+          </div>
+          {pages.length === 2 && (
+            <div ref={rightWrapRef} className="relative shrink-0" style={{ borderRadius: "0 4px 4px 0" }}>
+              <canvas
+                ref={rightRef}
+                className="block bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
+                style={{ borderRadius: "inherit" }}
+              />
+              <div ref={rightTextRef} className="pdfTextLayer" />
+            </div>
           )}
         </div>
 
@@ -335,7 +380,11 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
             className={iconButton}
             aria-label="Download this issue"
           >
-            {createElement("ion-icon", { name: downloading ? "hourglass" : "download" })}
+            {downloading ? (
+              <span className="pdfSpinner" aria-hidden="true" />
+            ) : (
+              createElement("ion-icon", { name: "download" })
+            )}
           </button>
 
           {shareOpen && (

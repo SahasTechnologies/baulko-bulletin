@@ -22,6 +22,82 @@ ion-icon {
   vertical-align: -0.2em;
 }
 
+/* Buttons don't get a pointer cursor by default; links do. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+label[for],
+summary {
+  cursor: pointer;
+}
+
+/* Overshoot easing gives the scale-on-hover a springy bounce. */
+button:not(:disabled) {
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+button:not(:disabled):active {
+  transform: scale(0.95);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled) {
+    transition: none;
+  }
+
+  button:not(:disabled):active {
+    transform: none;
+  }
+}
+
+/* Loading circle shown while a download is being fetched. */
+.pdfSpinner {
+  width: 1.05em;
+  height: 1.05em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: pdfSpin 0.7s linear infinite;
+}
+
+@keyframes pdfSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdfSpinner {
+    animation-duration: 2s;
+  }
+}
+
+/* Transparent, selectable text laid over the rendered PDF canvas.
+   Rules follow pdf.js's own text_layer_builder stylesheet. */
+.pdfTextLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.pdfTextLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.pdfTextLayer ::selection {
+  background: rgb(0 100 255 / 0.35);
+}
+
 .theme-toggle {
   cursor: pointer;
   transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
