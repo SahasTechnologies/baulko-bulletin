@@ -12,16 +12,17 @@ const RESEND_ENDPOINT = "https://api.resend.com/emails";
 const TURNSTILE_ACTION = "contact";
 const TURNSTILE_ENDPOINT = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
+/**
+ * Hostnames we insist the token was solved on. Empty means "don't check": the
+ * Turnstile widget already restricts which domains may render it, so an
+ * unconfigured allowlist shouldn't be able to reject real submissions (preview
+ * deployments, a new custom domain, Cloudflare's test keys, …).
+ */
 function allowedTurnstileHostnames() {
-  const configured = (process.env.TURNSTILE_HOSTNAMES || "")
+  return (process.env.TURNSTILE_HOSTNAMES || "")
     .split(",")
     .map((h) => h.trim())
     .filter(Boolean);
-  if (configured.length) return configured;
-  // Not configured: accept the known hosts plus local dev.
-  return import.meta.env.PROD
-    ? ["baulko-bulletin.vercel.app", "baulkobulletin.com"]
-    : ["localhost", "127.0.0.1", "baulko-bulletin.vercel.app", "baulkobulletin.com"];
 }
 
 /**
@@ -69,14 +70,19 @@ async function verifyTurnstile(token: string, remoteIp: string | null) {
       console.warn("[contact] Turnstile rejected:", result["error-codes"] || "no error codes");
       return { ok: false, reason: "captcha-failed" };
     }
-    if (result.action !== TURNSTILE_ACTION) {
+    // Reject a token minted for a different form, but tolerate an absent action:
+    // Cloudflare's test keys never return one, and a missing field shouldn't be
+    // able to take the live contact form down.
+    if (result.action && result.action !== TURNSTILE_ACTION) {
       console.warn(`[contact] Turnstile action mismatch: ${result.action}`);
       return { ok: false, reason: "captcha-action" };
     }
-    if (result.hostname && !allowedTurnstileHostnames().includes(result.hostname)) {
+    const allowed = allowedTurnstileHostnames();
+    if (allowed.length && result.hostname && !allowed.includes(result.hostname)) {
       console.warn(`[contact] Turnstile hostname not allowed: ${result.hostname}`);
       return { ok: false, reason: "captcha-hostname" };
     }
+    if (result.hostname) console.log(`[contact] Turnstile ok (host ${result.hostname})`);
     return { ok: true, reason: "" };
   } catch (err) {
     console.error("[contact] Turnstile verification failed:", err);

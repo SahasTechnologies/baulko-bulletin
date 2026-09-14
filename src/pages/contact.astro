@@ -8,8 +8,11 @@ export const prerender = false;
 const settings = await getSettings();
 const sent = Astro.url.searchParams.get("sent") === "1";
 // Public by design — the sitekey ships in the HTML. The secret stays server-side.
+// This page is server-rendered, so either name works; PUBLIC_ is the Astro idiom.
 const turnstileSiteKey =
-  import.meta.env.PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAAEzFFYWu-LrrOV_w";
+  import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ||
+  import.meta.env.TURNSTILE_SITE_KEY ||
+  "0x4AAAAAAEzFFYWu-LrrOV_w";
 ---
 
 <BaseLayout title="Contact" settings={settings}>
