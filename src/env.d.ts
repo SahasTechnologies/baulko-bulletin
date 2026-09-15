@@ -7,6 +7,10 @@ interface ImportMetaEnv {
   readonly ADMIN_PASSWORD?: string;
   /** Optional HMAC key for admin sessions; defaults to a key derived from the password. */
   readonly ADMIN_SESSION_SECRET?: string;
+  /** ImageKit keys used to sign browser uploads from the admin panel. */
+  readonly IMAGEKIT_PUBLIC_KEY?: string;
+  readonly IMAGEKIT_PRIVATE_KEY?: string;
+  readonly IMAGEKIT_URL_ENDPOINT?: string;
 }
 
 interface ImportMeta {

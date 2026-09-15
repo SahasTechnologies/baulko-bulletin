@@ -29,22 +29,55 @@ password in `ADMIN_PASSWORD`.
 | `/admin/pages` | The About, FAQ and Join page bodies |
 | `/admin/settings` | Site title, description, footer and social preview |
 | `/admin/messages` | Contact form submissions, with read/unread and delete |
+| `/admin/contacts` | Who contact messages are emailed to, plus a test send |
 
 ### Environment
 
 ```
 ADMIN_PASSWORD="…"          # required — the panel is off while this is unset
 ADMIN_SESSION_SECRET="…"    # optional — set it to revoke all sessions by rotation
+IMAGEKIT_PUBLIC_KEY="…"     # required for uploads from the panel
+IMAGEKIT_PRIVATE_KEY="…"    # signs each upload; never leaves the server
 ```
 
-Add both to the Vercel project's environment variables as well as your local
+Add them to the Vercel project's environment variables as well as your local
 `.env`. `ADMIN_PASSWORD` must never be renamed to `PUBLIC_ADMIN_PASSWORD`:
 `PUBLIC_*` values are inlined into the client bundle.
 
-Covers and issue PDFs are stored on ImageKit, so the forms take URLs rather than
-file uploads. Upload via the ImageKit dashboard (or `rename-media.mjs`) and paste
-the resulting URL. Existing PDFs live under `bulletin/pdfs` and covers at the
-bucket root.
+The ImageKit key only needs upload permission. Its media-management API is
+refused for a restricted key, which is why deleting a file (or the panel's own
+occasional test upload) happens in the ImageKit dashboard.
+
+### Uploading covers and PDFs
+
+Covers and issue PDFs are stored on ImageKit, and the panel uploads them for you:
+choosing a file gets a short-lived signature from `/api/admin/upload-auth` and
+sends it straight to ImageKit from the browser. Nothing large passes through the
+app, which is what makes 9 MB issue PDFs possible — a Vercel function only
+accepts a 4.5 MB request body.
+
+Images get a crop step first. Covers are shown edge to edge at a fixed ratio, so
+pick a ratio (Cover 2:1 matches the site), drag the picture to choose which part
+to keep, zoom if you need to, then upload. The crop is rendered from the original
+file at full resolution, not from the on-screen preview. Uploaded files are
+placed at `bulletin/` for images and `bulletin/pdfs/` for PDFs, and each upload
+gets a fresh name — re-uploading over an existing name leaves ImageKit's CDN
+serving the old bytes.
+
+`rename-media.mjs` still tidies names in bulk, and
+`node tools/trim-cover-borders.mjs <slug>` removes the even border a cover that
+was photographed against a light backdrop leaves behind (add `--write` to upload
+and repoint the row, `--index` to survey every cover).
+
+### Puzzles
+
+Puzzles are typed in with fields rather than in the stored format: one row per
+answer with its grid position, direction and clue for a crossword; a grid plus a
+word list for a find-a-word; scrambled/answer pairs for an unscramble. The panel
+generates the compact text the public components parse, and a “raw data” view
+stays available for fixing anything by hand. A puzzle can be attached to the
+issue it appeared in, and those puzzles are then listed at the foot of that
+issue's page.
 
 ### Security model
 

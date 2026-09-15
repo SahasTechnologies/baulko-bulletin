@@ -105,6 +105,7 @@ const MAX_LENGTHS: Record<string, number> = {
   data: 100_000,
   author_name: 120,
   type: 40,
+  post_id: 64,
 };
 
 /** Shared by the validator and the form's maxlength, so both agree. */
@@ -149,6 +150,9 @@ export function isoToDateInput(value: string | null | undefined): string {
   return sydneyDateFormatter.format(parsed);
 }
 
+/** Same shape `admin-db` accepts, repeated here so validation has no database import. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export interface ValidatedValues {
   values: Record<string, string>;
   error: string | null;
@@ -184,12 +188,17 @@ export function validateEntityForm(def: EntityDef, form: FormData): ValidatedVal
       return { values, error: `${field.label} is too long (maximum ${max} characters).` };
     }
 
-    if (field.type === "url" && !isAllowedUrl(value)) {
+    // Uploaded media lands here as a URL, so it is validated exactly like one.
+    if ((field.type === "url" || field.type === "image" || field.type === "pdf") && !isAllowedUrl(value)) {
       return { values, error: `${field.label} must be a full http(s) URL or a path starting with "/".` };
     }
     if (field.type === "date" && !dateInputToIso(value)) {
       return { values, error: `${field.label} must be a valid date.` };
     }
+    if (field.type === "issue" && !UUID_RE.test(value)) {
+      return { values, error: `${field.label} must be one of the listed issues.` };
+    }
+    // Only options declared up front can be checked; `issue` options come from the database.
     if (field.type === "select" && field.options && !field.options.includes(value)) {
       return { values, error: `${field.label} must be one of: ${field.options.join(", ")}.` };
     }

@@ -197,6 +197,25 @@ export async function getPuzzles(): Promise<Puzzle[]> {
   }, []);
 }
 
+/** A puzzle plus its position in the newest-first list, which forms its public URL. */
+export interface IndexedPuzzle {
+  puzzle: Puzzle;
+  index: number;
+}
+
+/**
+ * The puzzles that belong to one issue, for the list at the foot of its page.
+ *
+ * The index is not stored: `/puzzles/<index>` addresses the same newest-first
+ * list the puzzles page renders, so it has to be derived from that order.
+ */
+export async function getPuzzlesForPost(postId: string): Promise<IndexedPuzzle[]> {
+  const all = await getPuzzles();
+  return all
+    .map((puzzle, index) => ({ puzzle, index }))
+    .filter((entry) => entry.puzzle.post_id === postId);
+}
+
 export async function getPage(
   slug: "about" | "faq" | "join"
 ): Promise<PageContent> {

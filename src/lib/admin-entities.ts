@@ -22,12 +22,18 @@ export type FieldName =
   | "pdf_url"
   | "type"
   | "data"
-  | "author_name";
+  | "author_name"
+  | "post_id";
 
 export interface FieldDef {
   name: FieldName;
   label: string;
-  type: "text" | "textarea" | "date" | "select" | "url";
+  /**
+   * `image` and `pdf` render an uploader (with a crop step for images) that
+   * sends the file straight to ImageKit and stores the resulting URL.
+   * `issue` renders a picker of existing issues.
+   */
+  type: "text" | "textarea" | "date" | "select" | "url" | "image" | "pdf" | "issue";
   required?: boolean;
   placeholder?: string;
   rows?: number;
@@ -57,12 +63,6 @@ export interface EntityDef {
 /** Every admin row is a flat map of column → text; `id` is always present. */
 export type ContentRow = Record<string, string | null> & { id: string };
 
-const PUZZLE_FORMATS = [
-  "Crossword — one word per line: x y direction word clue, where x and y are 0-based grid positions. Example: 11 0 down aliens non human beings who travel in advanced technology",
-  "Find-A-Word — the grid rows (space-separated letters), a completely blank line, then the hidden words one per line.",
-  "Unscramble — one per line: Scrambled Answer. Example: EPPAL APPLE",
-].join("\n\n");
-
 const posts: EntityDef = {
   key: "posts",
   singular: "Issue",
@@ -87,12 +87,16 @@ const posts: EntityDef = {
     { name: "excerpt", label: "Excerpt", type: "textarea", rows: 3, help: "Short summary used on cards and previews." },
     {
       name: "pdf_url",
-      label: "PDF URL",
-      type: "url",
-      placeholder: "https://ik.imagekit.io/sahas/bulletin/pdfs/n_33.pdf",
-      help: "Upload the PDF to ImageKit first (bulletin/pdfs), then paste the URL. With a PDF set, the issue is read in the viewer; without one, Content is shown instead.",
+      label: "Issue PDF",
+      type: "pdf",
+      help: "Uploaded straight to ImageKit at bulletin/pdfs. The issue is read in the viewer, so this is what readers see.",
     },
-    { name: "cover_image_url", label: "Cover image URL", type: "url", placeholder: "https://ik.imagekit.io/…" },
+    {
+      name: "cover_image_url",
+      label: "Cover image",
+      type: "image",
+      help: "Upload and crop to the 2:1 shape the site displays. Leave the crop at Cover 2:1 for the standard look.",
+    },
     { name: "cover_image_alt", label: "Cover image alt text", type: "text", help: "Describes the cover for screen readers." },
     {
       name: "content",
@@ -100,7 +104,7 @@ const posts: EntityDef = {
       type: "textarea",
       rows: 8,
       full: true,
-      help: "HTML, not Markdown — e.g. <p>Read the issue here.</p>. Only displayed when no PDF URL is set.",
+      help: "Only needed when there is no PDF. HTML, not Markdown — paragraphs, headings, links and images all work.",
     },
   ],
 };
@@ -133,7 +137,12 @@ const extras: EntityDef = {
       help: "Matched against existing authors, otherwise a new author is created. Blank shows “Anonymous”.",
     },
     { name: "excerpt", label: "Excerpt", type: "textarea", rows: 3 },
-    { name: "cover_image_url", label: "Cover image URL", type: "url" },
+    {
+      name: "cover_image_url",
+      label: "Cover image",
+      type: "image",
+      help: "Upload and crop. The site shows it at 2:1, and the article column is centre-aligned beneath it.",
+    },
     { name: "cover_image_alt", label: "Cover image alt text", type: "text" },
     {
       name: "content",
@@ -141,7 +150,7 @@ const extras: EntityDef = {
       type: "textarea",
       rows: 12,
       full: true,
-      help: "HTML, not Markdown — paragraphs, headings, links and images all work.",
+      help: "HTML, not Markdown — paragraphs, headings, links and images all work. Use <figure><img src=\"…\"><figcaption>Caption</figcaption></figure> for a captioned picture, after uploading it above.",
     },
   ],
 };
@@ -166,19 +175,30 @@ const puzzles: EntityDef = {
       type: "select",
       required: true,
       options: ["Crossword", "Find-A-Word", "Unscramble"],
-      help: "Must match the data format below — it decides which interactive component renders.",
+      help: "Must match the data below — it decides which interactive component renders.",
     },
     { name: "date", label: "Publication date", type: "date", required: true, help: "Shown in Sydney time." },
     { name: "author_name", label: "Author", type: "text", help: "Blank shows “Anonymous”." },
-    { name: "cover_image_url", label: "Cover image URL", type: "url", help: "Optional art for the puzzle tile." },
+    {
+      name: "post_id",
+      label: "Issue this puzzle belongs to",
+      type: "issue",
+      help: "Linked puzzles are listed at the foot of that issue's page. Leave blank for a standalone puzzle.",
+    },
+    {
+      name: "cover_image_url",
+      label: "Cover image",
+      type: "image",
+      help: "Optional art for the puzzle tile. Square (1:1) reads best — the tiles are square.",
+    },
     {
       name: "data",
-      label: "Puzzle data",
+      label: "Puzzle",
       type: "textarea",
       rows: 14,
       required: true,
       full: true,
-      help: PUZZLE_FORMATS,
+      help: "Built with the fields below; the format is generated for you.",
     },
   ],
 };

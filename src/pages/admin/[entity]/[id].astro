@@ -3,7 +3,7 @@ import AdminLayout from "@/layouts/AdminLayout.astro";
 import ContentForm from "@/components/admin/ContentForm.astro";
 import Flash from "@/components/admin/Flash.astro";
 import { ENTITIES, isEntityKey } from "@/lib/admin-entities";
-import { getRow, listAuthorNames } from "@/lib/admin-db";
+import { getRow, listAuthorNames, listIssueOptions } from "@/lib/admin-db";
 import { flashFromUrl } from "@/lib/admin";
 
 export const prerender = false;
@@ -28,6 +28,9 @@ if (!row) {
 
 const authorNames = def.fields.some((field) => field.name === "author_name")
   ? await listAuthorNames().catch(() => [])
+  : [];
+const issues = def.fields.some((field) => field.name === "post_id")
+  ? await listIssueOptions().catch(() => [])
   : [];
 const preview = def.publicHref(row);
 ---
@@ -61,6 +64,7 @@ const preview = def.publicHref(row);
       submitLabel="Save changes"
       cancelHref={base}
       authorNames={authorNames}
+      issues={issues}
     />
   </div>
 
