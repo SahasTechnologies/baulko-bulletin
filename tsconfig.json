@@ -9,5 +9,10 @@
     }
   },
   "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist"]
+  // Astro's base config sets `allowJs`, so without these the checker parses
+  // every .js/.mjs file it can reach as source. That includes the minified
+  // pdf.js workers and wasm glue under public/pdfjs/, plus their copies in the
+  // build output — several megabytes of generated bundles that pushed the
+  // type-check past Node's default heap. Nothing here is imported by our code.
+  "exclude": ["dist", "public", ".vercel"]
 }

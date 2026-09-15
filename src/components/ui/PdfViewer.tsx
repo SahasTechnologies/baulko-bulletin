@@ -1,5 +1,49 @@
 import { createElement, useEffect, useRef, useState } from "react";
 
+/**
+ * pdf.js 6's modern build calls `Uint8Array.prototype.toHex()`, a method that only
+ * reached browsers in Chrome 140 / Safari 18.2 / Firefox 133 (Sept 2025). On
+ * anything older, opening an issue failed outright with "toHex is not a
+ * function" — a blank reader rather than a degraded one. pdf.js ships a legacy
+ * build of the same version for exactly this case, with those methods polyfilled
+ * in, so we choose per browser: a recent engine keeps the smaller, faster
+ * bundle, and an older one still gets a reader that opens. `toHex` is the newest
+ * method pdf.js uses, so its presence implies the older ones are there too.
+ */
+function hasModernPdfEngine() {
+  // `toHex` shipped with the same ES2026 wave as the other newer methods pdf.js
+  // uses; if it is present the rest are too, so it is a cheap single probe.
+  // (Cast: the installed lib.es dts does not declare `toHex` yet.)
+  const proto = Uint8Array.prototype as Uint8Array & { toHex?: unknown };
+  return typeof proto.toHex === "function";
+}
+
+/**
+ * Load the pdf.js build this browser can run, pointed at the matching worker and
+ * at the wasm decoders — all served from our own origin, copied into
+ * public/pdfjs/<version>/ by scripts/sync-pdfjs-assets.mjs. That script is not
+ * just about avoiding a CDN: a module worker cannot be started from another
+ * origin, and pdf.js silently falls back to running on the main thread when it
+ * cannot start one. The worker must come from the same build as this module, or
+ * the two disagree about the message protocol.
+ */
+async function loadPdfjs() {
+  const modern = hasModernPdfEngine();
+  const pdfjs = modern
+    ? await import("pdfjs-dist")
+    : await import("pdfjs-dist/legacy/build/pdf.mjs");
+  if (!modern) {
+    console.info(
+      "[pdf] this browser lacks Uint8Array.prototype.toHex — using the legacy pdf.js build"
+    );
+  }
+  const assets = `/pdfjs/${pdfjs.version}`;
+  pdfjs.GlobalWorkerOptions.workerSrc = modern
+    ? `${assets}/pdf.worker.min.mjs`
+    : `${assets}/legacy/pdf.worker.min.mjs`;
+  return { pdfjs, assets };
+}
+
 export default function PdfViewer({ src, title }: { src: string; title?: string }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const leftRef = useRef<HTMLCanvasElement>(null);
@@ -51,15 +95,13 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     let cancelled = false;
     (async () => {
       try {
-        const pdfjs = await import("pdfjs-dist");
+        const { pdfjs, assets } = await loadPdfjs();
         pdfjsRef.current = pdfjs;
-        const cdn = `https://unpkg.com/pdfjs-dist@${pdfjs.version}`;
-        pdfjs.GlobalWorkerOptions.workerSrc = `${cdn}/build/pdf.worker.min.mjs`;
         const doc = await pdfjs.getDocument({
           url: src,
           // Issues embed JPEG2000/JBIG2 art; without the wasm decoders pdf.js
           // drops those images and logs "OpenJPEG failed to initialize".
-          wasmUrl: `${cdn}/wasm/`,
+          wasmUrl: `${assets}/wasm/`,
         }).promise;
         if (cancelled) return;
         setPdf(doc);
