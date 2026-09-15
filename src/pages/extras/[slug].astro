@@ -12,7 +12,10 @@ const settings = await getSettings();
 const extra = await getExtraBySlug(slug!);
 
 if (!extra) {
-  return Astro.redirect("/404");
+  // Served as a 404 in place, not redirected to /404 — see the note in
+  // posts/[slug].astro.
+  Astro.response.status = 404;
+  return Astro.rewrite("/404");
 }
 
 const morePosts = await getMorePosts(2);

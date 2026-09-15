@@ -1,5 +1,6 @@
 ---
 import "@/styles/global.css";
+import Icon from "@/components/ui/Icon.astro";
 import type { Settings } from "@/types/content";
 
 interface Props {
@@ -12,6 +13,20 @@ interface Props {
 const { title, description, ogImage, settings } = Astro.props;
 const pageTitle = title ? `${title} | ${settings.title}` : settings.title;
 const pageDescription = description || settings.description;
+
+// The page's own image wins, then the site-wide default from Settings. Social
+// crawlers resolve og:image against their own context, not ours, so a relative
+// path like "/bulletin.png" (which the admin accepts) has to be made absolute
+// here or it silently resolves to nothing.
+const ogImageSource = ogImage || settings.og_image_url;
+const ogImageUrl = (() => {
+  if (!ogImageSource) return null;
+  try {
+    return new URL(ogImageSource, Astro.site ?? Astro.url).toString();
+  } catch {
+    return null;
+  }
+})();
 ---
 
 <!doctype html>
@@ -22,7 +37,7 @@ const pageDescription = description || settings.description;
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <title>{pageTitle}</title>
     <meta name="description" content={pageDescription} />
-    {ogImage && <meta property="og:image" content={ogImage} />}
+    {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDescription} />
     <script is:inline>
@@ -35,7 +50,6 @@ const pageDescription = description || settings.description;
         } catch (e) {}
       })();
     </script>
-    <script is:inline type="module" src="https://unpkg.com/ionicons@7.4.0/dist/ionicons/ionicons.esm.js"></script>
   </head>
   <body>
     <section class="min-h-screen">
@@ -68,7 +82,7 @@ const pageDescription = description || settings.description;
                   href="/contact"
                   class="inline-flex items-center gap-2 bg-black dark:bg-white dark:text-black py-3 px-8 font-bold text-white transition-all hover:scale-110 text-lg rounded-full"
                 >
-                  <ion-icon name="chatbubbles"></ion-icon>
+                  <Icon name="chatbubbles" />
                   Contact Us
                 </a>
                 <div class="flex flex-col items-center lg:items-end text-sm opacity-50 gap-1 pt-1">

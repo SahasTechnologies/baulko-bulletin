@@ -1,4 +1,4 @@
-import type { Extra, Post } from "@/types/content";
+import type { ExtraCard, PostCard } from "@/types/content";
 import CoverImage from "./CoverImage";
 import DateComponent from "./DateComponent";
 import Byline from "./Byline";
@@ -44,8 +44,8 @@ export default function MoreStories({
   extras = [],
   heading = "Previous Issues",
 }: {
-  posts: Post[];
-  extras?: Extra[];
+  posts: PostCard[];
+  extras?: ExtraCard[];
   heading?: string;
 }) {
   if (!posts.length && !extras.length) return null;

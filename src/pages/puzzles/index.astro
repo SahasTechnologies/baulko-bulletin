@@ -9,10 +9,20 @@ const settings = await getSettings();
 const puzzles = await getPuzzles();
 const morePosts = await getMorePosts(2);
 
+// Pinned to Sydney for the same reason DateComponent is: the server runs in
+// UTC, so without this a puzzle published in the evening reads as the previous
+// day here and the correct one on its own issue page.
+const dateFormatter = new Intl.DateTimeFormat("en", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "Australia/Sydney",
+});
+
 function formatDate(value: string) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" });
+  return dateFormatter.format(d);
 }
 ---
 

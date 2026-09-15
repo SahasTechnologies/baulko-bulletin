@@ -2,6 +2,7 @@
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import ContentForm from "@/components/admin/ContentForm.astro";
 import Flash from "@/components/admin/Flash.astro";
+import Icon from "@/components/ui/Icon.astro";
 import { ENTITIES, isEntityKey } from "@/lib/admin-entities";
 import { getRow, listAuthorNames, listIssueOptions } from "@/lib/admin-db";
 import { flashFromUrl } from "@/lib/admin";
@@ -50,7 +51,7 @@ const preview = def.publicHref(row);
         rel="noreferrer"
         class="inline-flex items-center gap-2 underline underline-offset-4 opacity-70 hover:opacity-100"
       >
-        <ion-icon name="open-outline"></ion-icon>
+        <Icon name="open-outline" />
         View on site
       </a>
     )}
@@ -72,7 +73,7 @@ const preview = def.publicHref(row);
     action="/api/admin/content"
     method="POST"
     class="mt-14 border-t border-black/10 pt-6 dark:border-white/10"
-    onsubmit={`return confirm('Delete “${row.title}”? This cannot be undone.')`}
+    data-confirm={`Delete “${row.title}”? This cannot be undone.`}
   >
     <input type="hidden" name="csrf" value={csrf} />
     <input type="hidden" name="entity" value={def.key} />
@@ -82,7 +83,7 @@ const preview = def.publicHref(row);
       type="submit"
       class="inline-flex items-center gap-2 rounded-full border border-red-500/50 px-6 py-2 text-lg text-red-700 transition-transform hover:scale-105 dark:text-red-400"
     >
-      <ion-icon name="trash"></ion-icon>
+      <Icon name="trash" />
       Delete this {def.singular.toLowerCase()}
     </button>
   </form>

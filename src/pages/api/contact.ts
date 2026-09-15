@@ -91,6 +91,62 @@ function getSql() {
   return neon(url);
 }
 
+/**
+ * Submission throttling, mirroring the login limiter in lib/auth.ts. Turnstile
+ * is the real gate, but it is optional — with TURNSTILE_SECRET unset every
+ * submission is accepted — so this is the only other thing between a script and
+ * the recipients' inboxes. In-memory, so on Vercel the window is per instance
+ * rather than global: enough to blunt a flood without a database round trip on
+ * every message. A client with no identifiable address is not throttled, since
+ * one shared "unknown" bucket would lock everybody out at once.
+ */
+const MAX_SUBMISSIONS = 5;
+const SUBMISSION_WINDOW_MS = 10 * 60 * 1000;
+const submissions = new Map<string, number[]>();
+
+function recentSubmissions(ip: string): number[] {
+  const cutoff = Date.now() - SUBMISSION_WINDOW_MS;
+  const kept = (submissions.get(ip) ?? []).filter((at) => at > cutoff);
+  if (kept.length) submissions.set(ip, kept);
+  else submissions.delete(ip);
+  return kept;
+}
+
+/** Seconds before this address may send again, or 0 when this one may go through. */
+function submissionWaitSeconds(ip: string): number {
+  const kept = recentSubmissions(ip);
+  const oldest = kept[0];
+  if (kept.length < MAX_SUBMISSIONS || oldest == null) return 0;
+  return Math.max(1, Math.ceil((oldest + SUBMISSION_WINDOW_MS - Date.now()) / 1000));
+}
+
+function noteSubmission(ip: string): void {
+  const kept = recentSubmissions(ip);
+  kept.push(Date.now());
+  submissions.set(ip, kept);
+}
+
+/**
+ * The form is a plain HTML POST with no JavaScript behind it, so a JSON body is
+ * unreadable to the person who submitted it — a failed captcha or an over-long
+ * message would dump `{"ok":false,…}` into the browser tab. Browser submits are
+ * bounced back to the form with the reason in the query string; anything that
+ * asked for JSON (a script, or curl) still gets JSON and the status code.
+ */
+function failure(request: Request, status: number, message: string): Response {
+  const accept = request.headers.get("accept") || "";
+  if (accept.includes("text/html")) {
+    return new Response(null, {
+      status: 303,
+      headers: { Location: `/contact?error=${encodeURIComponent(message)}` },
+    });
+  }
+  return new Response(JSON.stringify({ ok: false, error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 
 export const POST: APIRoute = async ({ request }) => {
   try {
@@ -126,33 +182,34 @@ export const POST: APIRoute = async ({ request }) => {
 
     const forwarded = request.headers.get("x-forwarded-for") || "";
     const remoteIp = forwarded.split(",")[0]?.trim() || null;
+
+    if (remoteIp) {
+      const wait = submissionWaitSeconds(remoteIp);
+      if (wait > 0) {
+        console.warn(`[contact] throttled ${remoteIp} (${wait}s remaining)`);
+        return failure(
+          request,
+          429,
+          `That is a lot of messages in a row. Please try again in ${wait} second${wait === 1 ? "" : "s"}.`
+        );
+      }
+    }
+
     const captcha = await verifyTurnstile(turnstileToken, remoteIp);
     if (!captcha.ok) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "Verification failed. Please try again." }),
-        { status: 403, headers: { "Content-Type": "application/json" } }
-      );
+      return failure(request, 403, "Verification failed. Please try again.");
     }
 
     if (!name || !email || !message) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "Name, email and message are required." }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return failure(request, 400, "Name, email and message are required.");
     }
 
     if (name.length > 200 || email.length > 320 || message.length > 5000) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "Input too long." }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return failure(request, 400, "Input too long.");
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "Invalid email address." }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return failure(request, 400, "Invalid email address.");
     }
 
     const sql = getSql();
@@ -163,6 +220,8 @@ export const POST: APIRoute = async ({ request }) => {
 
     // Awaited: a serverless function can be frozen as soon as we respond.
     await notifyContactRecipients({ name, email, message });
+
+    if (remoteIp) noteSubmission(remoteIp);
 
     const accept = request.headers.get("accept") || "";
     if (accept.includes("text/html")) {
@@ -178,9 +237,6 @@ export const POST: APIRoute = async ({ request }) => {
     });
   } catch (err) {
     console.error("contact form error:", err);
-    return new Response(
-      JSON.stringify({ ok: false, error: "Something went wrong. Please try again." }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return failure(request, 500, "Something went wrong. Please try again.");
   }
 };

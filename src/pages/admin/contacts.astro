@@ -1,6 +1,7 @@
 ---
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import Flash from "@/components/admin/Flash.astro";
+import Icon from "@/components/ui/Icon.astro";
 import { listRecipients } from "@/lib/admin-db";
 import { flashFromUrl } from "@/lib/admin";
 import { resendConfigured, senderAddress } from "@/lib/mail";
@@ -67,7 +68,7 @@ const inputClass =
         type="submit"
         class="inline-flex items-center gap-2 rounded-full bg-black px-7 py-3 text-lg font-bold text-white transition-transform hover:scale-105 dark:bg-white dark:text-black"
       >
-        <ion-icon name="paper-plane"></ion-icon>
+        <Icon name="paper-plane" />
         Send test email
       </button>
     </form>
@@ -129,7 +130,7 @@ const inputClass =
                 action="/api/admin/contacts"
                 method="POST"
                 class="mt-3"
-                onsubmit={`return confirm('Remove ${recipient.email} from the list?')`}
+                data-confirm={`Remove ${recipient.email} from the list?`}
               >
                 <input type="hidden" name="csrf" value={csrf} />
                 <input type="hidden" name="action" value="delete" />
@@ -166,7 +167,7 @@ const inputClass =
           type="submit"
           class="inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 font-bold text-white transition-transform hover:scale-105 dark:bg-white dark:text-black"
         >
-          <ion-icon name="add"></ion-icon>
+          <Icon name="add" />
           Add
         </button>
       </div>

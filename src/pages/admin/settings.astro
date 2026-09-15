@@ -1,6 +1,7 @@
 ---
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import Flash from "@/components/admin/Flash.astro";
+import Icon from "@/components/ui/Icon.astro";
 import { getSettingsRow } from "@/lib/admin-db";
 import { escapeHtml, flashFromUrl } from "@/lib/admin";
 
@@ -91,7 +92,7 @@ const inputClass =
         type="submit"
         class="inline-flex items-center gap-2 rounded-full bg-black px-8 py-3 text-lg font-bold text-white transition-transform hover:scale-105 dark:bg-white dark:text-black"
       >
-        <ion-icon name="save"></ion-icon>
+        <Icon name="save" />
         Save settings
       </button>
       <a href="/admin" class="underline underline-offset-4 opacity-70 hover:opacity-100">Back</a>

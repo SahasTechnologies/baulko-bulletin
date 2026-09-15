@@ -1,0 +1,33 @@
+---
+/**
+ * One inline ionicon.
+ *
+ * The markup comes from src/lib/icons.generated.ts — regenerate it with
+ * `node scripts/sync-icons.mjs` after adding an icon — so an icon is part of
+ * the HTML the server sends. Nothing has to load, upgrade, or re-render for it
+ * to appear, which is the whole point: the previous approach loaded ionic's
+ * upgrade script from unpkg, which both flashed the icons in after first paint
+ * and re-wrote the DOM before React hydrated (one hydration-mismatch error per
+ * icon, on every page).
+ *
+ * Decorative by design: every icon here sits beside its own text label, or
+ * inside a control that already carries an aria-label, so it is hidden from
+ * screen readers instead of announced as an unlabelled image.
+ */
+import { ICONS } from "@/lib/icons.generated";
+
+interface Props {
+  name: string;
+  class?: string;
+}
+
+const { name, class: className } = Astro.props;
+const markup = ICONS[name];
+if (!markup) console.warn(`[icon] no inline icon named “${name}”`);
+---
+
+{
+  markup && (
+    <span class:list={["icon", className]} aria-hidden="true" set:html={markup} />
+  )
+}

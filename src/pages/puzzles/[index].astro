@@ -5,18 +5,28 @@ import { Crossword } from "@/components/puzzles/Crossword";
 import { FindAWord } from "@/components/puzzles/FindAWord";
 import { Unscramble } from "@/components/puzzles/Unscramble";
 import MoreStories from "@/components/ui/MoreStories";
-import { getSettings, getPuzzles, getMorePosts } from "@/lib/db";
+import { getSettings, getPuzzleByIndex, getMorePosts } from "@/lib/db";
 
 const { index } = Astro.params;
 const settings = await getSettings();
-const puzzles = await getPuzzles();
-const puzzle = puzzles[parseInt(index!, 10)];
+// Only this puzzle's grid is fetched — the listings do not carry `data`.
+const puzzle = await getPuzzleByIndex(Number.parseInt(index!, 10));
 
 if (!puzzle) {
   return Astro.redirect("/puzzles");
 }
 
 const article = puzzle.type === "Unscramble" ? "an" : "a";
+
+// One reader per type, so an unrecognised type gets a named notice instead of a
+// blank page — which is what the three separate `type === …` branches produced
+// for anything they didn't match.
+const READERS: Record<string, typeof Crossword> = {
+  Crossword,
+  "Find-A-Word": FindAWord,
+  Unscramble,
+};
+const Reader = READERS[puzzle.type];
 const morePosts = await getMorePosts(2);
 ---
 
@@ -30,14 +40,16 @@ const morePosts = await getMorePosts(2);
       <h2 class="text-balance mb-12 text-xl font-semibold leading-tight tracking-tighter md:text-2xl lg:text-3xl opacity-50">
         {article} {puzzle.type} puzzle, by {puzzle.author_name || "Anonymous"}
       </h2>
-      {puzzle.type === "Crossword" && (
-        <Crossword client:load puzzle={{ data: puzzle.data }} />
-      )}
-      {puzzle.type === "Find-A-Word" && (
-        <FindAWord client:load puzzle={{ data: puzzle.data }} />
-      )}
-      {puzzle.type === "Unscramble" && (
-        <Unscramble client:load puzzle={{ data: puzzle.data }} />
+      {Reader ? (
+        <Reader client:load puzzle={{ data: puzzle.data }} />
+      ) : (
+        <div class="max-w-2xl rounded-2xl border border-amber-500/40 bg-amber-500/10 px-6 py-5">
+          <p class="mb-1 font-semibold">This puzzle can’t be played here yet.</p>
+          <p class="opacity-80">
+            It is stored as “{puzzle.type}”, which no reader on this page understands. Set its
+            type to Crossword, Find-A-Word or Unscramble in the admin panel to make it playable.
+          </p>
+        </div>
       )}
     </article>
     <hr class="border-black/10 dark:border-white/10 mb-24 mt-28" />

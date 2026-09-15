@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
+import Icon from "@/components/ui/Icon.astro";
 import PageHeader from "@/components/PageHeader.astro";
 import { getSettings } from "@/lib/db";
 
@@ -13,7 +14,7 @@ const settings = await getSettings();
       <h1 class="text-6xl font-bold tracking-tighter mb-6">404</h1>
       <p class="text-xl opacity-70 mb-10">That page does not exist.</p>
       <a href="/" class="inline-flex items-center gap-2 bg-black dark:bg-white dark:text-black text-white font-bold py-3 px-10 rounded-full hover:scale-105 transition-transform">
-        <ion-icon name="home"></ion-icon>
+        <Icon name="home" />
         Back home
       </a>
     </div>

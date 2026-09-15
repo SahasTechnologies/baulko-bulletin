@@ -12,3 +12,7 @@ public/pdfjs/
 *.log
 .vercel/
 .*/
+
+# The rule above ignores every dot-directory, which would silently swallow the
+# CI workflow. .github/ is the one that has to be tracked.
+!.github/

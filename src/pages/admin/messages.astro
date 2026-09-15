@@ -92,7 +92,7 @@ function received(value: string | null): string {
               <form
                 action="/api/admin/messages"
                 method="POST"
-                onsubmit="return confirm('Delete this message permanently?')"
+                data-confirm="Delete this message permanently?"
               >
                 <input type="hidden" name="csrf" value={csrf} />
                 <input type="hidden" name="id" value={message.id} />
