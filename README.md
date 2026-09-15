@@ -71,6 +71,12 @@ password in `ADMIN_PASSWORD`.
 | `/admin/messages` | Contact form submissions, with read/unread and delete |
 | `/admin/contacts` | Who contact messages are emailed to, plus a test send |
 
+Each message also records where it was sent from: the address the form was posted
+from is resolved to a city and country as the message is stored, so the panel says
+where a message came from rather than where it happens to be read. A message whose
+address could not be placed shows its time alone — as do the rows written before
+the column existed.
+
 ### Environment
 
 ```

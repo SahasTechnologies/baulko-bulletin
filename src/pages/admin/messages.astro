@@ -21,23 +21,23 @@ try {
 
 const unread = messages.filter((message) => !message.read).length;
 
-// The panel is read from wherever the operator happens to be, so the server
-// cannot know which clock a stamp should be read against — and pinning the
-// label to "(Sydney)" states something about the reader that is wrong as soon
-// as they are sitting somewhere else. It renders UTC here, and the script at
-// the foot of the page rewrites each stamp in the reader's own timezone,
-// labelled with the place they are actually in. UTC is what stays if that
-// script never runs.
+// Two different things sit on one line here, and they come from different
+// places. The time is the server's best guess at a clock it cannot know — the
+// panel is read from wherever the operator happens to be, so it renders UTC and
+// the script at the foot of the page rewrites it in the reader's own timezone.
+// The bracketed place is not the reader's at all: it is where the message was
+// sent from, resolved from the sender's address as the submission arrived, and
+// it is rendered as it was recorded.
 const formatter = new Intl.DateTimeFormat("en-AU", {
   dateStyle: "medium",
   timeStyle: "short",
   timeZone: "UTC",
 });
 
-function received(value: string | null): string {
+function received(value: string | null, place: string | null): string {
   const date = value ? new Date(value) : null;
   if (!date || Number.isNaN(date.getTime())) return "—";
-  return `${formatter.format(date)} (UTC)`;
+  return `${formatter.format(date)}${place ? ` (${place})` : ""}`;
 }
 ---
 
@@ -81,8 +81,13 @@ function received(value: string | null): string {
                   {message.email}
                 </a>
               </div>
-              <time datetime={message.created_at ?? ""} data-received class="text-sm opacity-60">
-                {received(message.created_at)}
+              <time
+                datetime={message.created_at ?? ""}
+                data-received
+                data-place={message.location ?? ""}
+                class="text-sm opacity-60"
+              >
+                {received(message.created_at, message.location)}
               </time>
             </div>
             <p class="mb-5 whitespace-pre-line text-pretty text-lg">{message.message}</p>
@@ -115,10 +120,8 @@ function received(value: string | null): string {
     )
   }
 
-  {/* Rewrites every received-at stamp in the reader's own timezone and names the
-      place from the address they are reading from: the device supplies the
-      clock, the IP supplies the label, and the server's UTC render above is the
-      fallback for both. */}
+  {/* Rewrites every stamp in the reader's own timezone, keeping the bracketed
+      place — which is where the message came from, not where it is being read. */}
   <script>
     const stamps = document.querySelectorAll("time[data-received]");
     if (stamps.length) {
@@ -128,29 +131,12 @@ function received(value: string | null): string {
         timeStyle: "short",
         timeZone: zone,
       });
-      // The zone's own city is an honest label until the lookup answers, and
-      // the only one if it never does — unlike a name pinned into the markup.
-      let place = (zone.split("/").pop() ?? zone).replace(/_/g, " ") || zone;
-
-      const paint = () => {
-        for (const stamp of stamps) {
-          const at = new Date(stamp.getAttribute("datetime") || "");
-          if (Number.isNaN(at.getTime())) continue;
-          stamp.textContent = `${formatter.format(at)} (${place})`;
-        }
-      };
-      paint();
-
-      fetch("/api/admin/geo")
-        .then((response) => (response.ok ? response.json() : null))
-        .then((geo) => {
-          if (!geo || !geo.place) return;
-          place = geo.place;
-          paint();
-        })
-        .catch(() => {
-          // The zone's city stands.
-        });
+      for (const stamp of stamps) {
+        const at = new Date(stamp.getAttribute("datetime") || "");
+        if (Number.isNaN(at.getTime())) continue;
+        const place = stamp.getAttribute("data-place");
+        stamp.textContent = formatter.format(at) + (place ? ` (${place})` : "");
+      }
     }
   </script>
 </AdminLayout>
