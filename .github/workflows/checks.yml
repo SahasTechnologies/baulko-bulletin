@@ -22,7 +22,9 @@ jobs:
       # this repo serves from public/pdfjs/.
       - run: npm ci
 
-      - run: npx astro check
+      # Types, template diagnostics, and whether src/lib/icons.generated.ts is
+      # still in step with the icons the source asks for.
+      - run: npm run check
 
       # Nothing here needs the database: every page is server-rendered, so no
       # query runs at build time.

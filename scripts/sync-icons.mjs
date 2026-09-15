@@ -23,6 +23,12 @@
  * scanner from picking up an unrelated `name="description"` and quietly
  * shipping a hole in the page.
  *
+ * `--check` compares the two sets and exits non-zero on any drift, without
+ * needing the icon source at all (no package, no network), because it never
+ * looks at the SVG markup. That is what `npm run check` and the Vercel build
+ * run: it turns "someone added an icon and forgot to regenerate" from an icon
+ * that silently renders as nothing into a failed deploy.
+ *
  * `IONICONS_EXTRA` covers icons that are only ever named at runtime, where no
  * amount of scanning can find them.
  */
@@ -119,11 +125,33 @@ function toExportName(kebab) {
 
 /* ---------------------------------------------------------------- generating */
 
-const icons = parseIcons((await iconSource()).text);
 const requested = new Set(IONICONS_EXTRA);
 for (const file of await sourceFiles(SRC)) {
   for (const name of scanSource(await readFile(file, "utf8"))) requested.add(name);
 }
+
+/** The icon names the generated file already carries. */
+async function generatedNames() {
+  if (!existsSync(OUTPUT)) return new Set();
+  const text = await readFile(OUTPUT, "utf8");
+  return new Set([...text.matchAll(/^  "([a-z0-9-]+)":/gm)].map((match) => match[1]));
+}
+
+if (process.argv.includes("--check")) {
+  const generated = await generatedNames();
+  const notGenerated = [...requested].filter((name) => !generated.has(name)).sort();
+  const noLongerUsed = [...generated].filter((name) => !requested.has(name)).sort();
+  if (notGenerated.length || noLongerUsed.length) {
+    if (notGenerated.length) console.error(`[icons] asked for but not generated: ${notGenerated.join(", ")}`);
+    if (noLongerUsed.length) console.error(`[icons] generated but no longer used: ${noLongerUsed.join(", ")}`);
+    console.error("[icons] run `npm run icons` and commit src/lib/icons.generated.ts.");
+    process.exit(1);
+  }
+  console.log(`[icons] ${requested.size} icons in step with src/`);
+  process.exit(0);
+}
+
+const icons = parseIcons((await iconSource()).text);
 
 const missing = [];
 const resolved = [];

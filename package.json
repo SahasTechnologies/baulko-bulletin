@@ -14,7 +14,7 @@
     "build": "astro build",
     "preview": "astro preview --host",
     "astro": "astro",
-    "check": "astro check",
+    "check": "astro check && node scripts/sync-icons.mjs --check",
     "icons": "node scripts/sync-icons.mjs"
   },
   "dependencies": {
