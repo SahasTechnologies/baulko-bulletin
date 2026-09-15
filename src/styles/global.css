@@ -82,18 +82,54 @@ button:not(:disabled):active {
   }
 }
 
-/* Transparent, selectable text laid over the rendered PDF canvas.
-   Rules follow pdf.js's own text_layer_builder stylesheet. */
+/* Transparent, selectable text laid over the rendered PDF canvas. pdf.js's
+   TextLayer positions each span inline (left/top percentages, --font-height,
+   --scale-x, --rotate) and sets --min-font-size on the container itself;
+   these rules are the other half of that contract, from pdf.js's own
+   text_layer_builder stylesheet. The spans derive their real font size from
+   those variables — without the calc() formulas below every span renders at
+   its 1px placeholder size, so selection highlights (and copied text
+   geometry) don't match the canvas underneath. --scale-factor (and, for the
+   rare PDF that uses one, --user-unit) is set inline by PdfViewer to the CSS
+   scale of the current render. */
 .pdfTextLayer {
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  --total-scale-factor: calc(var(--scale-factor, 1) * var(--user-unit, 1));
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  overflow: clip;
   line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-align: initial;
+  color-scheme: only light;
   text-size-adjust: none;
   forced-color-adjust: none;
   transform-origin: 0 0;
   z-index: 1;
   pointer-events: auto;
+}
+
+.pdfTextLayer > :not(.markedContent),
+.pdfTextLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x))
+    scale(var(--min-font-size-inv));
+}
+
+.pdfTextLayer .markedContent {
+  display: contents;
 }
 
 .pdfTextLayer :is(span, br) {
@@ -102,6 +138,24 @@ button:not(:disabled):active {
   white-space: pre;
   cursor: text;
   transform-origin: 0% 0%;
+  user-select: text;
+}
+
+/* Like pdf.js's own viewer: a filler element parked below the page. While the
+   layer has its "selecting" class (toggled from PdfViewer on mousedown and
+   selection changes), the filler jumps to the top so a drag past the last
+   line extends the selection to the end of the page instead of collapsing. */
+.pdfTextLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.pdfTextLayer.selecting .endOfContent {
+  top: 0;
 }
 
 .pdfTextLayer ::selection {
