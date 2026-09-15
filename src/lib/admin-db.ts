@@ -387,6 +387,8 @@ export interface SubmissionRow {
   name: string;
   email: string;
   message: string;
+  /** Where the sender was, resolved as the message arrived; null if unplaced. */
+  location: string | null;
   read: boolean;
   created_at: string | null;
 }
@@ -394,7 +396,7 @@ export interface SubmissionRow {
 export async function listSubmissions(limit = 200): Promise<SubmissionRow[]> {
   const sql = sqlClient();
   const rows = await sql`
-    SELECT id, name, email, message, read, created_at
+    SELECT id, name, email, message, location, read, created_at
     FROM contact_submissions
     ORDER BY created_at DESC
     LIMIT ${limit}
@@ -406,6 +408,7 @@ export async function listSubmissions(limit = 200): Promise<SubmissionRow[]> {
       name: asText(record.name) ?? "",
       email: asText(record.email) ?? "",
       message: asText(record.message) ?? "",
+      location: asText(record.location),
       read: Boolean(record.read),
       created_at: asText(record.created_at),
     };

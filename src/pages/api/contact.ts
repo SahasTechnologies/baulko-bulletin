@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { neon } from "@neondatabase/serverless";
+import { placeFor } from "@/lib/geo";
 import { notifyContactRecipients } from "@/lib/mail";
 
 export const prerender = false;
@@ -180,6 +181,10 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
+    // The sender's own address, off the submission itself — Vercel overwrites
+    // `x-forwarded-for`, so the first entry is the client and not something the
+    // form could have chosen. Used for the throttle, the captcha check and the
+    // location; never replaced by an address of our own.
     const forwarded = request.headers.get("x-forwarded-for") || "";
     const remoteIp = forwarded.split(",")[0]?.trim() || null;
 
@@ -212,10 +217,16 @@ export const POST: APIRoute = async ({ request }) => {
       return failure(request, 400, "Invalid email address.");
     }
 
+    // Where the message was sent from, read off the address it arrived on. Done
+    // here, before the insert, rather than left to whoever opens the panel
+    // later: the answer belongs to the submission, and the operator's own
+    // address would say nothing about where this came from.
+    const location = await placeFor(remoteIp);
+
     const sql = getSql();
     await sql`
-      INSERT INTO contact_submissions (name, email, message)
-      VALUES (${name}, ${email}, ${message})
+      INSERT INTO contact_submissions (name, email, message, location)
+      VALUES (${name}, ${email}, ${message}, ${location})
     `;
 
     // Awaited: a serverless function can be frozen as soon as we respond.
