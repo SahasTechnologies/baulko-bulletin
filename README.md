@@ -9,12 +9,52 @@ Visit [baulkobulletin.com](https://baulkobulletin.com).
 ```bash
 npm install
 npm run dev        # http://localhost:4321
-npm run check      # astro check (types + template diagnostics)
+npm run check      # types, template diagnostics and the generated icons
+npm run icons      # regenerate src/lib/icons.generated.ts after adding an icon
 npm run build      # production build
 ```
 
 Content lives in Postgres (Neon); `DATABASE_URL` is required. All copy is served
 from the `posts`, `extras`, `puzzles`, `pages`, `authors` and `settings` tables.
+
+### Checks and deploys
+
+`npm run check` runs `astro check` and then verifies that the generated icons are
+still in step with the source. `vercel.json` puts that in front of the build, so
+a type error — or an icon somebody forgot to generate — fails the deployment
+rather than reaching the live site.
+
+The install command is pinned to `npm ci --include=dev`: the checker and
+TypeScript are devDependencies, and Vercel skips those when `NODE_ENV=production`
+is set in the project's environment variables. `npm ci` also installs strictly
+from the lockfile, so editing `package.json` without updating the lock fails the
+build instead of deploying a different dependency tree than the one that was
+tested.
+
+`.github/workflows/checks.yml` runs the same commands plus a build on every push
+and pull request, which reports faster than waiting on the deploy.
+
+### Icons
+
+Icons are inlined into the page instead of loaded from a CDN: `Icon.astro` and
+`Icon.tsx` render the SVG out of `src/lib/icons.generated.ts`, so an icon is part
+of the HTML the server sends and of the island bundle. Nothing is fetched, and
+nothing upgrades the DOM after load — which is what used to log a React
+hydration mismatch for every icon on every page.
+
+That file is generated from the icons the source asks for:
+
+```bash
+npm run icons
+```
+
+The generator scans `src/` for icon names — `<Icon name="…" />`, literals inside
+a `name={…}` expression, and the `icon:` keys in the nav arrays — and fails
+loudly on a name that is not a real ionicon. `npm run check` fails when the two
+disagree, so adding an icon and forgetting to regenerate is a failed deploy
+rather than an icon that quietly renders as nothing. It reads the SVG from the
+`ionicons` package when installed, otherwise from unpkg, so regenerating on a
+fresh checkout wants a network connection; the committed file is what builds.
 
 ## Admin panel
 
