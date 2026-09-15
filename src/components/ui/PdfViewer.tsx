@@ -78,7 +78,105 @@ function isCancellation(err: unknown) {
   return name === "RenderingCancelledException" || name === "AbortException";
 }
 
-type CachedPage = { canvas: HTMLCanvasElement; text: HTMLDivElement };
+/**
+ * Fetches the issue into memory, reporting how far along it is.
+ *
+ * Reading a 9 MB issue used to fetch it page by page as you flipped: pdf.js's
+ * range requests pull each page's bytes on demand, so the first flip after a
+ * pause waited on the network. Downloading the file once, up front, moves that
+ * cost into a wait that can at least be shown — after this every page is
+ * local, and a flip only costs a rasterization.
+ *
+ * `null` means "do not hold this one": a file past the limit stays with
+ * pdf.js's own streaming rather than being copied into an array the tab has to
+ * keep. The response is dropped at that point, so the size is only ever read
+ * from the headers.
+ */
+async function downloadPdf(
+  url: string,
+  onProgress: (received: number, total: number) => void
+): Promise<Uint8Array | null> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+  const length = Number(response.headers.get("content-length")) || 0;
+  if (length > FULL_DOWNLOAD_LIMIT) {
+    await response.body?.cancel();
+    console.info(
+      `[pdf] ${(length / 1024 / 1024).toFixed(1)} MB is too big to keep in memory — letting pdf.js stream it instead`
+    );
+    return null;
+  }
+
+  // No readable stream (an older engine): take it in one go instead.
+  if (!response.body) {
+    const buffered = new Uint8Array(await response.arrayBuffer());
+    onProgress(buffered.length, buffered.length);
+    return buffered;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    // `total` is 0 when the response never said (ImageKit answers with brotli,
+    // which suppresses content-length): the caller shows the running total
+    // rather than a percentage of a number nobody has.
+    onProgress(received, length);
+  }
+
+  const data = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    data.set(chunk, offset);
+    offset += chunk.length;
+  }
+  onProgress(received, length);
+  return data;
+}
+
+type CachedPage = { canvas: HTMLCanvasElement; text: HTMLDivElement; bytes: number };
+
+/**
+ * How far ahead of the reader to keep pages rasterized. These are about canvas
+ * memory, not network — the file itself is already in memory — so "ahead" is
+ * measured in spreads and capped twice: by page count, and by bytes, because a
+ * two-up spread at 2x on a large display runs to tens of megabytes.
+ */
+const LOOKAHEAD_AHEAD = 3;
+const LOOKAHEAD_BEHIND = 1;
+const MAX_CACHED_PAGES = 16;
+const MAX_CACHE_BYTES = 120 * 1024 * 1024;
+
+/**
+ * Priority pages that must be rendered before the reader is shown, so the first
+ * flips after the wait are instant rather than the wait merely hiding the
+ * first page's render.
+ */
+const WARM_PAGES = 4;
+
+/**
+ * Past this, holding the whole file in memory is the wrong trade.
+ */
+const FULL_DOWNLOAD_LIMIT = 40 * 1024 * 1024;
+
+/**
+ * An absolute ceiling on the opening wait. The warm-up gate below is the normal
+ * way out of the loader, but a slow page, a stalled worker or a document that
+ * never yields the wanted pages must not leave the reader looking at a spinner
+ * forever — after this they get whatever is rendered, and the loop keeps
+ * working in the background.
+ */
+const READY_TIMEOUT_MS = 10_000;
+
+/** Byte count for the loader, e.g. "4.2 MB". */
+function megabytes(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 
 export default function PdfViewer({ src, title }: { src: string; title?: string }) {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -124,6 +222,11 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   const [stageW, setStageW] = useState(0);
   // Bumped every time a page lands in the cache, so the stage re-checks it.
   const [tick, setTick] = useState(0);
+  // Bytes of the issue downloaded so far, and the size the response claimed
+  // (0 when it did not say). Shown while the file is coming down.
+  const [incoming, setIncoming] = useState({ received: 0, total: 0 });
+  // How much of the pages rendered ahead of the reader is done, 0…1.
+  const [warmth, setWarmth] = useState(0);
 
   const [editingPage, setEditingPage] = useState(false);
   const [pageDraft, setPageDraft] = useState("");
@@ -146,9 +249,22 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setStageW(el.clientWidth));
+    const measure = () => setStageW((w) => (el.clientWidth === w ? w : el.clientWidth));
+    // Measure once up front rather than waiting for the observer's first
+    // callback: ResizeObserver delivers during the rendering steps, which a
+    // background, minimised or occluded tab suspends — and stage width gates
+    // the entire render loop, so a reader who opens an issue in a background
+    // tab would otherwise sit on an empty loader until they focused it. The
+    // element is already laid out here, so the value is available.
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    // And a plain resize listener, for any engine that never delivers one.
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
   }, []);
 
   useEffect(() => {
@@ -157,12 +273,16 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
       try {
         const { pdfjs, assets } = await loadPdfjs();
         pdfjsRef.current = pdfjs;
-        const doc = await pdfjs.getDocument({
-          url: src,
-          // Issues embed JPEG2000/JBIG2 art; without the wasm decoders pdf.js
-          // drops those images and logs "OpenJPEG failed to initialize".
-          wasmUrl: `${assets}/wasm/`,
-        }).promise;
+        // Issues embed JPEG2000/JBIG2 art; without the wasm decoders pdf.js
+        // drops those images and logs "OpenJPEG failed to initialize".
+        const wasmUrl = `${assets}/wasm/`;
+        const file = await downloadPdf(src, (received, total) => {
+          if (!cancelled) setIncoming({ received, total });
+        });
+        if (cancelled) return;
+        const doc = await pdfjs.getDocument(
+          file ? { data: file, wasmUrl } : { url: src, wasmUrl }
+        ).promise;
         if (cancelled) return;
         cacheRef.current.clear();
         setReady(false);
@@ -195,11 +315,10 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     if (numPages) setPage((p) => Math.min(Math.max(1, p), numPages));
   }, [numPages]);
 
-  // Priority list for the render loop: the visible pages, then the next
-  // spread, the previous one, and one more beyond the next — a reader who taps
-  // "next" a few times in a row still lands on pages that are already rendered.
-  // Also cancels a lookahead render that fell out of the list so the newly
-  // wanted page can start immediately.
+  // Priority list for the render loop: the visible pages first, then several
+  // spreads ahead and one behind — a reader who keeps tapping "next" lands on
+  // pages that were rendered seconds ago. Also cancels a lookahead render that
+  // fell out of the list so the newly wanted page can start immediately.
   useEffect(() => {
     const wanted: number[] = [];
     const push = (p: number | null) => {
@@ -209,10 +328,21 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
       }
     };
     push(page);
-    const next = nextPageOf(page, numPages, spread);
-    push(next);
-    push(prevPageOf(page, spread));
-    if (next != null) push(nextPageOf(next, numPages, spread));
+
+    let ahead: number | null = page;
+    for (let i = 0; i < LOOKAHEAD_AHEAD; i++) {
+      ahead = ahead == null ? null : nextPageOf(ahead, numPages, spread);
+      if (ahead == null) break;
+      push(ahead);
+    }
+
+    let behind: number | null = page;
+    for (let i = 0; i < LOOKAHEAD_BEHIND; i++) {
+      behind = behind == null ? null : prevPageOf(behind, spread);
+      if (behind == null) break;
+      push(behind);
+    }
+
     priorityRef.current = wanted;
     const inFlight = inFlightRef.current;
     if (inFlight && !wanted.includes(inFlight.page)) inFlight.cancel();
@@ -310,14 +440,29 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
       text.append(end);
       text.addEventListener("mousedown", () => text.classList.add("selecting"));
 
-      cacheRef.current.set(p, { canvas, text });
-      // Bound memory: the canvases are the expensive part (~10 MB each on a
-      // retina display). Evict pages that are no longer near the current one,
-      // oldest first — they re-render on demand if the reader flips back.
+      cacheRef.current.set(p, {
+        canvas,
+        text,
+        bytes: canvas.width * canvas.height * 4,
+      });
+
+      // Bound memory. Pages that fell out of the priority list go first, then
+      // the least wanted of the ones still on it — the list read backwards —
+      // and never a page that has just landed or one of the last two left.
+      // Anything evicted re-renders on demand if the reader comes back to it.
       const keep = new Set(priorityRef.current);
-      for (const key of [...cacheRef.current.keys()]) {
-        if (cacheRef.current.size <= 8) break;
-        if (!keep.has(key)) cacheRef.current.delete(key);
+      const order = [
+        ...[...cacheRef.current.keys()].filter((key) => !keep.has(key)),
+        ...[...keep].reverse(),
+      ];
+      let held = 0;
+      for (const entry of cacheRef.current.values()) held += entry.bytes;
+      for (const victim of order) {
+        if (cacheRef.current.size <= MAX_CACHED_PAGES && held <= MAX_CACHE_BYTES) break;
+        if (victim === p || cacheRef.current.size <= 2) continue;
+        const dropped = cacheRef.current.get(victim);
+        if (dropped) held -= dropped.bytes;
+        cacheRef.current.delete(victim);
       }
       setTick((t) => t + 1);
     }
@@ -378,8 +523,27 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
       }
     }
     setPending(blank);
-    if (!missing) setReady(true);
+
+    // The reader is shown once a few pages are rendered, not merely the visible
+    // ones: the point of the wait is that the next flips are already
+    // rasterized. WARM_PAGES counts entries from the priority list (a spread is
+    // two of them), and a document with nothing left to warm — the last page,
+    // or a short issue — opens as soon as it is on screen.
+    const wanted = priorityRef.current;
+    const rendered = wanted.filter((p) => cacheRef.current.has(p)).length;
+    const target = Math.min(wanted.length, WARM_PAGES) || 1;
+    setWarmth(Math.min(1, rendered / target));
+    if (!missing && rendered >= target) setReady(true);
   }, [pdf, page, numPages, spread, stageW, tick]);
+
+  // The opening wait is a gate, not a prison: if the warm-up has not finished
+  // within READY_TIMEOUT_MS, show the reader anyway and let the loop keep
+  // filling the cache behind it.
+  useEffect(() => {
+    if (!pdf || ready) return;
+    const timer = window.setTimeout(() => setReady(true), READY_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [pdf, ready]);
 
   // Mirror pdf.js's selection handling across all cached layers: while the
   // selection intersects a layer it keeps its "selecting" class (see the
@@ -508,8 +672,50 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   return (
     <div className="relative rounded-3xl bg-neutral-200/80 px-3 py-6 dark:bg-neutral-900 md:px-8 md:py-10">
       {(loading || (!error && !ready)) && (
-        <div className="flex min-h-[60vh] items-center justify-center text-lg opacity-60">
-          {loading ? "Opening issue…" : "Preparing pages…"}
+        <div
+          className="flex min-h-[60vh] flex-col items-center justify-center gap-4"
+          role="status"
+          aria-live="polite"
+        >
+          {/* Two honest phases: bytes arriving (a running total, because the
+              response is compressed and has no length to be a fraction of),
+              then pages rendering ahead of the reader. */}
+          <p className="text-lg opacity-70">
+            {loading
+              ? `Loading the issue… ${megabytes(incoming.received)}${
+                  // The header, when there is one, describes the bytes on the
+                  // wire; `received` counts the decompressed bytes. A server
+                  // that compresses *and* declares a length would otherwise
+                  // promise "9.1 MB of 3.0 MB", so only quote a total the
+                  // running count can still fit inside.
+                  incoming.total && incoming.received <= incoming.total
+                    ? ` of ${megabytes(incoming.total)}`
+                    : ""
+                }`
+              : "Preparing pages…"}
+          </p>
+          <div className="h-1.5 w-56 overflow-hidden rounded-full bg-black/10 dark:bg-white/15">
+            <div
+              className={`h-full rounded-full bg-black/70 transition-[width] duration-300 dark:bg-white/80 ${
+                loading && !incoming.total ? "w-1/3 animate-pulse" : ""
+              }`}
+              style={
+                loading && !incoming.total
+                  ? undefined
+                  : {
+                      width: `${Math.round(
+                        Math.min(
+                          1,
+                          loading
+                            ? incoming.received / (incoming.total || incoming.received || 1)
+                            : warmth
+                        ) * 100
+                      )}%`,
+                    }
+              }
+            />
+          </div>
+          {!loading && <p className="text-sm tabular-nums opacity-50">{Math.round(warmth * 100)}%</p>}
         </div>
       )}
       {error && (
