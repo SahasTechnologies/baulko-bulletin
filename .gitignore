@@ -1,6 +1,10 @@
 node_modules/
 dist/
 .astro/
+
+# Copied out of node_modules/pdfjs-dist by scripts/sync-pdfjs-assets.mjs,
+# which `npm install` and `npm run build` both run.
+public/pdfjs/
 .env
 .env.local
 .env*.local
