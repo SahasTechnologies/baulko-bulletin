@@ -21,18 +21,23 @@ try {
 
 const unread = messages.filter((message) => !message.read).length;
 
-// Same timezone reasoning as the public site: pin Sydney so an operator and a
-// reader never disagree about the day a message arrived.
+// The panel is read from wherever the operator happens to be, so the server
+// cannot know which clock a stamp should be read against — and pinning the
+// label to "(Sydney)" states something about the reader that is wrong as soon
+// as they are sitting somewhere else. It renders UTC here, and the script at
+// the foot of the page rewrites each stamp in the reader's own timezone,
+// labelled with the place they are actually in. UTC is what stays if that
+// script never runs.
 const formatter = new Intl.DateTimeFormat("en-AU", {
   dateStyle: "medium",
   timeStyle: "short",
-  timeZone: "Australia/Sydney",
+  timeZone: "UTC",
 });
 
 function received(value: string | null): string {
   const date = value ? new Date(value) : null;
   if (!date || Number.isNaN(date.getTime())) return "—";
-  return `${formatter.format(date)} (Sydney)`;
+  return `${formatter.format(date)} (UTC)`;
 }
 ---
 
@@ -76,7 +81,9 @@ function received(value: string | null): string {
                   {message.email}
                 </a>
               </div>
-              <span class="text-sm opacity-60">{received(message.created_at)}</span>
+              <time datetime={message.created_at ?? ""} data-received class="text-sm opacity-60">
+                {received(message.created_at)}
+              </time>
             </div>
             <p class="mb-5 whitespace-pre-line text-pretty text-lg">{message.message}</p>
             <div class="flex flex-wrap items-center gap-5 text-sm">
@@ -107,4 +114,43 @@ function received(value: string | null): string {
       </div>
     )
   }
+
+  {/* Rewrites every received-at stamp in the reader's own timezone and names the
+      place from the address they are reading from: the device supplies the
+      clock, the IP supplies the label, and the server's UTC render above is the
+      fallback for both. */}
+  <script>
+    const stamps = document.querySelectorAll("time[data-received]");
+    if (stamps.length) {
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const formatter = new Intl.DateTimeFormat("en-AU", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: zone,
+      });
+      // The zone's own city is an honest label until the lookup answers, and
+      // the only one if it never does — unlike a name pinned into the markup.
+      let place = (zone.split("/").pop() ?? zone).replace(/_/g, " ") || zone;
+
+      const paint = () => {
+        for (const stamp of stamps) {
+          const at = new Date(stamp.getAttribute("datetime") || "");
+          if (Number.isNaN(at.getTime())) continue;
+          stamp.textContent = `${formatter.format(at)} (${place})`;
+        }
+      };
+      paint();
+
+      fetch("/api/admin/geo")
+        .then((response) => (response.ok ? response.json() : null))
+        .then((geo) => {
+          if (!geo || !geo.place) return;
+          place = geo.place;
+          paint();
+        })
+        .catch(() => {
+          // The zone's city stands.
+        });
+    }
+  </script>
 </AdminLayout>
