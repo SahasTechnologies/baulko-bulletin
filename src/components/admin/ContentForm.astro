@@ -1,4 +1,6 @@
 ---
+import MediaField from "@/components/admin/MediaField";
+import PuzzleDataEditor from "@/components/admin/PuzzleDataEditor";
 import { escapeHtml, isoToDateInput, maxLengthFor } from "@/lib/admin";
 import type { ContentRow, EntityDef } from "@/lib/admin-entities";
 
@@ -10,9 +12,11 @@ interface Props {
   submitLabel: string;
   cancelHref: string;
   authorNames?: string[];
+  /** Issues, for the puzzle "which issue is this from" picker. */
+  issues?: { id: string; title: string }[];
 }
 
-const { def, row, csrf, submitLabel, cancelHref, authorNames = [] } = Astro.props;
+const { def, row, csrf, submitLabel, cancelHref, authorNames = [], issues = [] } = Astro.props;
 
 const inputClass =
   "w-full rounded-xl border border-black/15 bg-white px-4 py-3 text-lg dark:border-white/15 dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-black/30 dark:focus:ring-white/30";
@@ -20,6 +24,15 @@ const inputClass =
 function valueFor(name: string): string {
   if (name === "date") return isoToDateInput(row?.date);
   return row?.[name] ?? "";
+}
+
+// The puzzle builder follows the type select, so it needs to know what is
+// selected before the editor is ever touched.
+const puzzleType = valueFor("type") || "Crossword";
+
+/** Uploads, builders and wide textareas get the whole width. */
+function isFull(field: { full?: boolean; type: string }): boolean {
+  return Boolean(field.full) || field.type === "image" || field.type === "pdf";
 }
 ---
 
@@ -34,13 +47,35 @@ function valueFor(name: string): string {
       const id = `${def.key}-${field.name}`;
       const value = valueFor(field.name);
       return (
-        <div class:list={["flex flex-col", field.full && "md:col-span-2"]}>
+        <div class:list={["flex flex-col", isFull(field) && "md:col-span-2"]}>
           <label for={id} class="mb-1 block text-sm font-medium">
             {field.label}
             {field.required && <span class="opacity-50"> (required)</span>}
           </label>
 
-          {field.type === "textarea" ? (
+          {field.type === "image" || field.type === "pdf" ? (
+            <MediaField
+              client:load
+              name={field.name}
+              initial={value}
+              kind={field.type === "pdf" ? "pdf" : "image"}
+              fieldId={id}
+              required={Boolean(field.required)}
+            />
+          ) : def.key === "puzzles" && field.name === "data" ? (
+            <PuzzleDataEditor client:load name={field.name} initial={value} initialType={puzzleType} />
+          ) : field.type === "issue" ? (
+            <select id={id} name={field.name} class={inputClass}>
+              <option value="" selected={!value}>
+                — Not part of an issue —
+              </option>
+              {issues.map((issue) => (
+                <option value={issue.id} selected={issue.id === value}>
+                  {issue.title}
+                </option>
+              ))}
+            </select>
+          ) : field.type === "textarea" ? (
             // set:html rather than a child expression: template indentation would
             // otherwise become part of the textarea's value.
             <textarea

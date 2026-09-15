@@ -5,7 +5,8 @@ import DateComponent from "@/components/ui/DateComponent";
 import PdfViewer from "@/components/ui/PdfViewer";
 import MoreStories from "@/components/ui/MoreStories";
 import Byline from "@/components/ui/Byline";
-import { getSettings, getPostBySlug, getMorePosts } from "@/lib/db";
+import { croppedSquareUrl } from "@/lib/images";
+import { getSettings, getPostBySlug, getMorePosts, getPuzzlesForPost } from "@/lib/db";
 
 const { slug } = Astro.params;
 const settings = await getSettings();
@@ -16,6 +17,10 @@ if (!post) {
 }
 
 const morePosts = (await getMorePosts(8)).filter((p) => p.id !== post.id).slice(0, 2);
+
+// The puzzles that ran alongside this issue, in the same order (and therefore
+// with the same /puzzles/<index> URLs) as the puzzles page.
+const puzzles = await getPuzzlesForPost(post.id);
 ---
 
 <BaseLayout title={post.title} description={post.excerpt || undefined} settings={settings} ogImage={post.cover_image_url}>
@@ -38,6 +43,48 @@ const morePosts = (await getMorePosts(8)).filter((p) => p.id !== post.id).slice(
         <div class="prose prose-lg dark:prose-invert max-w-2xl mx-auto" set:html={post.content} />
       )}
     </article>
+
+    {
+      puzzles.length > 0 && (
+        <section class="mt-24">
+          <h2 class="mb-2 text-4xl font-bold leading-tight tracking-tighter md:text-5xl">
+            Puzzles in this issue
+          </h2>
+          <p class="mb-8 text-lg opacity-70">
+            {puzzles.length === 1
+              ? "One puzzle was published alongside this issue."
+              : `${puzzles.length} puzzles were published alongside this issue.`}
+          </p>
+          <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {puzzles.map(({ puzzle, index }) => {
+              const cover = croppedSquareUrl(puzzle.cover_image_url);
+              return (
+                <a class="group transition" href={`/puzzles/${index}`}>
+                  <div class="relative flex aspect-square items-end justify-end overflow-hidden rounded-xl bg-slate-800 p-6 font-mono text-4xl font-black text-slate-200 shadow-md transition group-hover:scale-105 group-hover:shadow-2xl group-hover:shadow-white/40 dark:group-hover:shadow-white/10">
+                    {cover && (
+                      <img
+                        src={cover}
+                        alt={puzzle.title}
+                        width={1000}
+                        height={1000}
+                        class="absolute inset-0 size-full rounded-xl object-cover"
+                      />
+                    )}
+                    <div class="relative z-10 drop-shadow-[0_5px_10px_black]">
+                      {index.toString().padStart(2, "0")}
+                    </div>
+                  </div>
+                  <div class="transition origin-top group-hover:translate-y-2 group-hover:scale-110">
+                    <div class="font-semibold">{puzzle.title}</div>
+                    <div class="opacity-50">{puzzle.type}</div>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )
+    }
 
     <hr class="border-black/10 dark:border-white/10 mb-24 mt-28" />
     <MoreStories client:load posts={morePosts} heading="Recent Issues" />

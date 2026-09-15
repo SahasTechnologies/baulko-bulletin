@@ -2,7 +2,7 @@
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import ContentForm from "@/components/admin/ContentForm.astro";
 import { ENTITIES, isEntityKey } from "@/lib/admin-entities";
-import { listAuthorNames } from "@/lib/admin-db";
+import { listAuthorNames, listIssueOptions } from "@/lib/admin-db";
 
 export const prerender = false;
 
@@ -20,6 +20,9 @@ const csrf = Astro.locals.adminCsrf;
 const authorNames = def.fields.some((field) => field.name === "author_name")
   ? await listAuthorNames().catch(() => [])
   : [];
+const issues = def.fields.some((field) => field.name === "post_id")
+  ? await listIssueOptions().catch(() => [])
+  : [];
 ---
 
 <AdminLayout title={`New ${def.singular}`} current={base}>
@@ -34,6 +37,7 @@ const authorNames = def.fields.some((field) => field.name === "author_name")
       submitLabel={`Create ${def.singular.toLowerCase()}`}
       cancelHref={base}
       authorNames={authorNames}
+      issues={issues}
     />
   </div>
 </AdminLayout>

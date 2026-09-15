@@ -66,12 +66,22 @@ export async function listRows(key: EntityKey): Promise<ContentRow[]> {
   }
   const rows = await sql`
     SELECT puzzles.id, puzzles.title, puzzles.type, puzzles.date, puzzles.cover_image_url,
-           authors.name AS author_name
+           puzzles.post_id, authors.name AS author_name
     FROM puzzles
     LEFT JOIN authors ON authors.id = puzzles.author_id
     ORDER BY puzzles.date DESC
   `;
   return rows.map((row) => rowFrom(row as Record<string, unknown>));
+}
+
+/** Options for the puzzle "issue" picker, newest issue first. */
+export async function listIssueOptions(): Promise<{ id: string; title: string }[]> {
+  const sql = sqlClient();
+  const rows = await sql`SELECT id, title FROM posts ORDER BY date DESC`;
+  return rows.map((row) => ({
+    id: String((row as { id: unknown }).id),
+    title: asText((row as { title: unknown }).title) ?? "",
+  }));
 }
 
 export async function getRow(key: EntityKey, id: string): Promise<ContentRow | null> {
@@ -97,7 +107,7 @@ export async function getRow(key: EntityKey, id: string): Promise<ContentRow | n
   }
   const rows = await sql`
     SELECT puzzles.id, puzzles.title, puzzles.type, puzzles.data, puzzles.date,
-           puzzles.cover_image_url, authors.name AS author_name
+           puzzles.cover_image_url, puzzles.post_id, authors.name AS author_name
     FROM puzzles
     LEFT JOIN authors ON authors.id = puzzles.author_id
     WHERE puzzles.id = ${id}::uuid LIMIT 1
@@ -216,18 +226,20 @@ export async function saveRow(
   const type = values.type;
   const data = values.data ?? "";
   const authorId = await resolveAuthorId(values.author_name ?? "");
+  // A blank picker clears the link; Postgres is happy to take null through the cast.
+  const postId = isUuid(values.post_id) ? values.post_id : null;
   if (id) {
     await sql`
       UPDATE puzzles SET
         title = ${title}, type = ${type}, data = ${data}, cover_image_url = ${coverUrl},
-        date = ${date}::timestamptz, author_id = ${authorId}::uuid
+        date = ${date}::timestamptz, author_id = ${authorId}::uuid, post_id = ${postId}::uuid
       WHERE id = ${id}::uuid
     `;
     return { id, slug: null };
   }
   const created = await sql`
-    INSERT INTO puzzles (title, type, data, cover_image_url, date, author_id)
-    VALUES (${title}, ${type}, ${data}, ${coverUrl}, ${date}::timestamptz, ${authorId}::uuid)
+    INSERT INTO puzzles (title, type, data, cover_image_url, date, author_id, post_id)
+    VALUES (${title}, ${type}, ${data}, ${coverUrl}, ${date}::timestamptz, ${authorId}::uuid, ${postId}::uuid)
     RETURNING id
   `;
   return { id: String((created[0] as { id: unknown }).id), slug: null };
@@ -410,6 +422,53 @@ export async function deleteSubmission(id: string): Promise<void> {
   if (!isUuid(id)) return;
   const sql = sqlClient();
   await sql`DELETE FROM contact_submissions WHERE id = ${id}::uuid`;
+}
+
+/* ------------------------------------------------------- contact recipients */
+
+/**
+ * Unlike `db.getContactRecipients`, which returns only the addresses the form
+ * actually sends to, this lists every row so paused ones can be managed.
+ */
+export interface RecipientRow {
+  id: string;
+  email: string;
+  name: string | null;
+  active: boolean;
+}
+
+export async function listRecipients(): Promise<RecipientRow[]> {
+  const sql = sqlClient();
+  const rows = await sql`SELECT id, email, name, active FROM contact_recipients ORDER BY created_at`;
+  return rows.map((row) => {
+    const record = row as Record<string, unknown>;
+    return {
+      id: String(record.id),
+      email: asText(record.email) ?? "",
+      name: asText(record.name),
+      active: Boolean(record.active),
+    };
+  });
+}
+
+export async function addRecipient(email: string, name: string | null): Promise<void> {
+  const sql = sqlClient();
+  await sql`INSERT INTO contact_recipients (email, name, active) VALUES (${email}, ${name}, true)`;
+}
+
+export async function updateRecipient(id: string, email: string, name: string | null, active: boolean): Promise<void> {
+  if (!isUuid(id)) return;
+  const sql = sqlClient();
+  await sql`
+    UPDATE contact_recipients SET email = ${email}, name = ${name}, active = ${active}
+    WHERE id = ${id}::uuid
+  `;
+}
+
+export async function deleteRecipient(id: string): Promise<void> {
+  if (!isUuid(id)) return;
+  const sql = sqlClient();
+  await sql`DELETE FROM contact_recipients WHERE id = ${id}::uuid`;
 }
 
 /** Sessions carry no database state; kept here so admin routes import one module. */
