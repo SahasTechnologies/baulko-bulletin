@@ -44,18 +44,68 @@ async function loadPdfjs() {
   return { pdfjs, assets };
 }
 
+/** The pages shown together when `p` is the current page. */
+function spreadPages(p: number, numPages: number, spread: boolean): number[] {
+  if (!numPages) return [];
+  if (!spread) return [p];
+  if (p <= 1) return [1];
+  const left = p % 2 === 0 ? p : p - 1;
+  const right = left + 1;
+  return right <= numPages ? [left, right] : [left];
+}
+
+function nextPageOf(p: number, numPages: number, spread: boolean): number | null {
+  if (spread) {
+    const next = p <= 1 ? 2 : p % 2 === 0 ? p + 2 : p + 1;
+    return next <= numPages ? next : null;
+  }
+  return p < numPages ? p + 1 : null;
+}
+
+function prevPageOf(p: number, spread: boolean): number | null {
+  if (spread) {
+    if (p <= 1) return null;
+    return p <= 2 ? 1 : p % 2 === 0 ? p - 2 : p - 1;
+  }
+  return p > 1 ? p - 1 : null;
+}
+
+/** pdf.js rejects cancelled work with these; they are control flow, not errors. */
+function isCancellation(err: unknown) {
+  const name = (err as { name?: string } | null)?.name;
+  return name === "RenderingCancelledException" || name === "AbortException";
+}
+
+type CachedPage = { canvas: HTMLCanvasElement; text: HTMLDivElement };
+
 export default function PdfViewer({ src, title }: { src: string; title?: string }) {
   const stageRef = useRef<HTMLDivElement>(null);
-  const leftRef = useRef<HTMLCanvasElement>(null);
-  const rightRef = useRef<HTMLCanvasElement>(null);
   const leftWrapRef = useRef<HTMLDivElement>(null);
   const rightWrapRef = useRef<HTMLDivElement>(null);
-  const leftTextRef = useRef<HTMLDivElement>(null);
-  const rightTextRef = useRef<HTMLDivElement>(null);
   const pageInputRef = useRef<HTMLInputElement>(null);
   const shareRef = useRef<HTMLDivElement>(null);
-  // The loaded pdf.js module, so the render effect can build text layers.
+  // The loaded pdf.js module, so the render loop can build text layers.
   const pdfjsRef = useRef<any>(null);
+
+  // Fully rendered pages — canvas plus text layer, sized for the current
+  // scale — ready to be moved into the stage. This cache is what makes flips
+  // instant: navigation mounts an already-rendered page instead of kicking off
+  // a rasterization on click, and a background loop keeps it filled ahead of
+  // the reader (current spread first, then the spreads on either side), so by
+  // the time "next" is pressed the next pages have usually been rendered for
+  // seconds already.
+  const cacheRef = useRef(new Map<number, CachedPage>());
+  // The render/text-layer task currently in flight, so a priority change can
+  // cancel a lookahead render that is no longer wanted.
+  const inFlightRef = useRef<{ page: number; cancel: () => void } | null>(null);
+  // Generation counter for the background loop: bumped whenever the scale
+  // context (document, spread mode, stage width) changes, invalidating the
+  // loop and everything cached at the old scale.
+  const genRef = useRef(0);
+  // Pages to render, most wanted first. Read by the loop, written by an effect.
+  const priorityRef = useRef<number[]>([]);
+  // Wakes the parked loop when the priority list changes.
+  const nudgeRef = useRef<() => void>(() => {});
 
   const [pdf, setPdf] = useState<any>(null);
   const [page, setPage] = useState(1);
@@ -63,10 +113,15 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   const [spread, setSpread] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  // A canvas is 300x150 until we size it, so keep the placeholder up until the
-  // first page has actually been painted — otherwise the page flashes tiny.
-  const [painted, setPainted] = useState(false);
+  // True once the first spread has been mounted — the loader hides then, and
+  // stays hidden for the rest of the session.
+  const [ready, setReady] = useState(false);
+  // A visible page isn't rendered yet and there is nothing stale to keep on
+  // screen — a small overlay covers the gap until it lands.
+  const [pending, setPending] = useState(false);
   const [stageW, setStageW] = useState(0);
+  // Bumped every time a page lands in the cache, so the stage re-checks it.
+  const [tick, setTick] = useState(0);
 
   const [editingPage, setEditingPage] = useState(false);
   const [pageDraft, setPageDraft] = useState("");
@@ -84,12 +139,15 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   }, []);
 
   // Measure the usable width so the pages always fit — no horizontal scroll.
+  // A ResizeObserver (rather than a window resize listener) also catches the
+  // layout settling after mount and container-driven size changes.
   useEffect(() => {
-    const measure = () => setStageW(stageRef.current?.clientWidth ?? 0);
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [loading, error]);
+    const el = stageRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setStageW(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +162,8 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
           wasmUrl: `${assets}/wasm/`,
         }).promise;
         if (cancelled) return;
+        cacheRef.current.clear();
+        setReady(false);
         setPdf(doc);
         setNumPages(doc.numPages);
         setLoading(false);
@@ -120,7 +180,9 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     };
   }, [src]);
 
-  // Deep link: /posts/<slug>?page=7 opens on that page.
+  // Deep link: /posts/<slug>?page=7 opens on that page. The render loop reads
+  // the current page for its priority list, so the deep-linked page renders
+  // first and the opener waits only for pages it will actually show.
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get("page");
     const n = Number.parseInt(raw ?? "", 10);
@@ -131,91 +193,217 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     if (numPages) setPage((p) => Math.min(Math.max(1, p), numPages));
   }, [numPages]);
 
-  const pages = (() => {
-    if (!numPages) return [] as number[];
-    if (!spread) return [page];
-    if (page <= 1) return [1];
-    const left = page % 2 === 0 ? page : page - 1;
-    const right = left + 1;
-    return right <= numPages ? [left, right] : [left];
-  })();
-
+  // Priority list for the render loop: the visible pages, then the next
+  // spread, the previous one, and one more beyond the next — a reader who taps
+  // "next" a few times in a row still lands on pages that are already rendered.
+  // Also cancels a lookahead render that fell out of the list so the newly
+  // wanted page can start immediately.
   useEffect(() => {
-    if (!pdf || !stageW) return;
-    let cancelled = false;
+    const wanted: number[] = [];
+    const push = (p: number | null) => {
+      if (p == null) return;
+      for (const q of spreadPages(p, numPages, spread)) {
+        if (!wanted.includes(q)) wanted.push(q);
+      }
+    };
+    push(page);
+    const next = nextPageOf(page, numPages, spread);
+    push(next);
+    push(prevPageOf(page, spread));
+    if (next != null) push(nextPageOf(next, numPages, spread));
+    priorityRef.current = wanted;
+    const inFlight = inFlightRef.current;
+    if (inFlight && !wanted.includes(inFlight.page)) inFlight.cancel();
+    nudgeRef.current();
+  }, [page, numPages, spread]);
+
+  // The background render loop. One page at a time, highest priority first;
+  // parks on a nudge when everything wanted is cached. Restarted (and the
+  // cache dropped) whenever the scale context changes, since cached pages are
+  // rasterized for one exact size.
+  useEffect(() => {
+    if (!pdf || !stageW || !pdfjsRef.current) return;
+    const gen = ++genRef.current;
+    cacheRef.current.clear();
+
+    const maxH = Math.min(window.innerHeight * 0.78, 980);
+    // Lookahead pages at the raw device ratio would multiply canvas memory by
+    // up to 9 on a 3x phone for no visible gain — 2 is the usual ceiling.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Render attempts per page this generation — a transient worker hiccup
+    // gets one retry, a genuinely broken page can't spin the loop forever.
+    const attempts = new Map<number, number>();
+
+    const waitForNudge = () =>
+      new Promise<void>((resolve) => {
+        nudgeRef.current = resolve;
+      });
+
+    async function renderOne(p: number) {
+      const pdfPage = await pdf.getPage(p);
+      if (genRef.current !== gen) return;
+      const pdfjs = pdfjsRef.current;
+
+      // The cover and a trailing unpaired page sit alone on their spread, so
+      // they get the full stage width; everything else shares it.
+      const alone = spreadPages(p, numPages, spread).length === 1;
+      const perPage = alone ? stageW : stageW / 2;
+      const base = pdfPage.getViewport({ scale: 1 });
+      const fit = Math.min(perPage / base.width, maxH / base.height);
+      const cssW = base.width * fit;
+      const cssH = base.height * fit;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(cssW * dpr));
+      canvas.height = Math.max(1, Math.round(cssH * dpr));
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+      canvas.style.display = "block";
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no 2d context");
+      const renderTask = pdfPage.render({
+        canvasContext: ctx,
+        viewport: pdfPage.getViewport({ scale: fit * dpr }),
+      });
+      inFlightRef.current = { page: p, cancel: () => renderTask.cancel() };
+      try {
+        await renderTask.promise;
+      } finally {
+        if (inFlightRef.current?.page === p) inFlightRef.current = null;
+      }
+      if (genRef.current !== gen) return;
+
+      // Transparent, selectable text over the canvas. TextLayer positions the
+      // spans itself; the scale inputs it cannot know are set here (see the
+      // .pdfTextLayer rules in global.css). It multiplies the scale by the
+      // device ratio internally, so this viewport is the CSS-scale one.
+      const cssViewport = pdfPage.getViewport({ scale: fit });
+      const text = document.createElement("div");
+      text.className = "pdfTextLayer";
+      text.style.setProperty("--scale-factor", String(fit));
+      if (cssViewport.userUnit && cssViewport.userUnit !== 1) {
+        text.style.setProperty("--user-unit", String(cssViewport.userUnit));
+      }
+      const layer = new pdfjs.TextLayer({
+        textContentSource: pdfPage.streamTextContent(),
+        container: text,
+        viewport: cssViewport,
+      });
+      inFlightRef.current = { page: p, cancel: () => layer.cancel() };
+      try {
+        await layer.render();
+      } finally {
+        if (inFlightRef.current?.page === p) inFlightRef.current = null;
+      }
+      if (genRef.current !== gen) return;
+
+      // Like pdf.js's own viewer: a filler below the last line, combined with
+      // the "selecting" class, lets a drag past the end of the page extend the
+      // selection to the end instead of collapsing. The class is toggled by
+      // the document-wide listener below; mousedown adds it up front so the
+      // very first drag already behaves.
+      const end = document.createElement("div");
+      end.className = "endOfContent";
+      text.append(end);
+      text.addEventListener("mousedown", () => text.classList.add("selecting"));
+
+      cacheRef.current.set(p, { canvas, text });
+      // Bound memory: the canvases are the expensive part (~10 MB each on a
+      // retina display). Evict pages that are no longer near the current one,
+      // oldest first — they re-render on demand if the reader flips back.
+      const keep = new Set(priorityRef.current);
+      for (const key of [...cacheRef.current.keys()]) {
+        if (cacheRef.current.size <= 8) break;
+        if (!keep.has(key)) cacheRef.current.delete(key);
+      }
+      setTick((t) => t + 1);
+    }
+
     (async () => {
-      const canvases = [leftRef.current, rightRef.current];
-      const textDivs = [leftTextRef.current, rightTextRef.current];
-      const maxH = Math.min(window.innerHeight * 0.78, 980);
-      const perPage = spread && pages.length === 2 ? stageW / 2 : stageW;
-      const dpr = window.devicePixelRatio || 1;
-
-      for (let i = 0; i < pages.length; i++) {
-        const canvas = canvases[i];
-        if (!canvas) continue;
-        const pdfPage = await pdf.getPage(pages[i]);
-        if (cancelled) return;
-
-        const base = pdfPage.getViewport({ scale: 1 });
-        const fit = Math.min(perPage / base.width, maxH / base.height);
-        const cssW = base.width * fit;
-        const cssH = base.height * fit;
-
-        canvas.style.width = `${cssW}px`;
-        canvas.style.height = `${cssH}px`;
-        canvas.width = Math.round(cssW * dpr);
-        canvas.height = Math.round(cssH * dpr);
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) continue;
-        await pdfPage.render({
-          canvasContext: ctx,
-          viewport: pdfPage.getViewport({ scale: fit * dpr }),
-        }).promise;
-
-        // Transparent text over the canvas, so text can be selected and copied.
-        const textDiv = textDivs[i];
-        const pdfjs = pdfjsRef.current;
-        if (textDiv && pdfjs?.TextLayer) {
-          const layer = new pdfjs.TextLayer({
-            textContentSource: pdfPage.streamTextContent(),
-            container: textDiv,
-            viewport: pdfPage.getViewport({ scale: fit }),
-          });
-          textDiv.replaceChildren();
-          try {
-            await layer.render();
-          } catch (e) {
-            console.error("[pdf] text layer failed:", e);
-          }
-          if (cancelled) {
-            layer.cancel();
-            return;
+      while (genRef.current === gen) {
+        const target = priorityRef.current.find(
+          (p) => !cacheRef.current.has(p) && (attempts.get(p) ?? 0) < 2
+        );
+        if (target == null) {
+          await waitForNudge();
+          continue;
+        }
+        try {
+          await renderOne(target);
+        } catch (err) {
+          // A cancelled render is either a priority change (the page left the
+          // list, so it won't be picked again) or a generation bump (the loop
+          // exits below) — neither is retried; real failures are, but only
+          // once per page, so a broken page can't spin the loop.
+          if (!isCancellation(err)) {
+            attempts.set(target, (attempts.get(target) ?? 0) + 1);
+            console.error("[pdf] page render failed:", err);
           }
         }
+        if (genRef.current !== gen) return;
       }
-      if (!cancelled) setPainted(true);
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [pdf, pages.join(","), spread, stageW]);
 
+    return () => {
+      genRef.current += 1;
+      inFlightRef.current?.cancel();
+      inFlightRef.current = null;
+    };
+  }, [pdf, spread, stageW, numPages]);
+
+  // Mount whichever visible pages are already rendered. If one is still
+  // rendering, whatever was on screen stays there (no flash on resize or
+  // spread toggle); only a slot with nothing to show gets the overlay.
+  useEffect(() => {
+    if (!pdf || !stageW) return;
+    const visible = spreadPages(page, numPages, spread);
+    const slots = [leftWrapRef.current, rightWrapRef.current];
+    let missing = false;
+    let blank = false;
+    for (let i = 0; i < 2; i++) {
+      const p = visible[i];
+      const slot = slots[i];
+      if (p == null || !slot) continue;
+      const hit = cacheRef.current.get(p);
+      if (hit) {
+        if (slot.firstElementChild !== hit.canvas) {
+          slot.replaceChildren(hit.canvas, hit.text);
+        }
+      } else {
+        missing = true;
+        if (slot.childElementCount === 0) blank = true;
+      }
+    }
+    setPending(blank);
+    if (!missing) setReady(true);
+  }, [pdf, page, numPages, spread, stageW, tick]);
+
+  // Mirror pdf.js's selection handling across all cached layers: while the
+  // selection intersects a layer it keeps its "selecting" class (see the
+  // endOfContent note in the render loop).
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const sel = document.getSelection();
+      const active = !!sel && sel.rangeCount > 0;
+      for (const { text } of cacheRef.current.values()) {
+        text.classList.toggle("selecting", active && sel!.containsNode(text, true));
+      }
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, []);
+
+  // Functional update: several clicks (or a held arrow key) arriving in one
+  // render must each advance a page, not all resolve against the same stale
+  // `page` and collapse into a single step.
   function go(delta: number) {
     if (!numPages) return;
-    if (spread) {
-      if (page <= 1 && delta < 0) return;
-      if (delta > 0) {
-        const next = page <= 1 ? 2 : page % 2 === 0 ? page + 2 : page + 1;
-        if (next > numPages) return;
-        setPage(next);
-      } else {
-        const next = page <= 2 ? 1 : page % 2 === 0 ? page - 2 : page - 1;
-        setPage(Math.max(1, next));
-      }
-    } else {
-      setPage((p) => Math.min(numPages, Math.max(1, p + delta)));
-    }
+    setPage((p) => {
+      const target =
+        delta > 0 ? nextPageOf(p, numPages, spread) : prevPageOf(p, spread);
+      return target ?? p;
+    });
   }
 
   useEffect(() => {
@@ -239,6 +427,7 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     return () => document.removeEventListener("mousedown", onDown);
   }, [shareOpen]);
 
+  const pages = spreadPages(page, numPages, spread);
   const first = pages[0] || 1;
   const label = pages.length === 2 ? `${pages[0]}–${pages[1]} / ${numPages}` : `${first} / ${numPages || "…"}`;
 
@@ -311,11 +500,14 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   const iconButton =
     "inline-flex size-11 items-center justify-center rounded-full bg-black text-white text-xl transition hover:scale-105 dark:bg-white dark:text-black disabled:opacity-40";
 
+  const pageSlot =
+    "relative shrink-0 overflow-hidden bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]";
+
   return (
     <div className="relative rounded-3xl bg-neutral-200/80 px-3 py-6 dark:bg-neutral-900 md:px-8 md:py-10">
-      {loading && (
+      {(loading || (!error && !ready)) && (
         <div className="flex min-h-[60vh] items-center justify-center text-lg opacity-60">
-          Opening issue…
+          {loading ? "Opening issue…" : "Preparing pages…"}
         </div>
       )}
       {error && (
@@ -329,28 +521,26 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
           clientWidth of 0 — which would deadlock the first render. */}
       <div ref={stageRef} className="h-0 w-full" aria-hidden="true" />
 
-      <div className={loading || error || !painted ? "hidden" : ""}>
-        <div className="flex items-center justify-center overflow-hidden">
+      <div className={loading || error || !ready ? "hidden" : ""}>
+        <div className="relative flex items-center justify-center overflow-hidden">
+          {/* The canvases and text layers are created by the render loop and
+              moved in here when ready; the slots only own chrome (shadow,
+              rounded corners). */}
           <div
             ref={leftWrapRef}
-            className="relative shrink-0"
+            className={pageSlot}
             style={{ borderRadius: pages.length === 1 ? "4px" : "4px 0 0 4px" }}
-          >
-            <canvas
-              ref={leftRef}
-              className="block bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
-              style={{ borderRadius: "inherit" }}
-            />
-            <div ref={leftTextRef} className="pdfTextLayer" />
-          </div>
+          />
           {pages.length === 2 && (
-            <div ref={rightWrapRef} className="relative shrink-0" style={{ borderRadius: "0 4px 4px 0" }}>
-              <canvas
-                ref={rightRef}
-                className="block bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
-                style={{ borderRadius: "inherit" }}
-              />
-              <div ref={rightTextRef} className="pdfTextLayer" />
+            <div
+              ref={rightWrapRef}
+              className={pageSlot}
+              style={{ borderRadius: "0 4px 4px 0" }}
+            />
+          )}
+          {pending && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+              <span className="pdfSpinner" style={{ width: 28, height: 28 }} aria-hidden="true" />
             </div>
           )}
         </div>
@@ -359,7 +549,7 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
           <button
             type="button"
             onClick={() => go(-1)}
-            disabled={page <= 1}
+            disabled={prevPageOf(page, spread) == null}
             className={iconButton}
             aria-label="Previous page"
           >
@@ -397,7 +587,7 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
           <button
             type="button"
             onClick={() => go(1)}
-            disabled={page >= numPages}
+            disabled={nextPageOf(page, numPages, spread) == null}
             className={iconButton}
             aria-label="Next page"
           >
