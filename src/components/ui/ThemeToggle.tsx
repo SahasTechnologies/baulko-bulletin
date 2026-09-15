@@ -1,4 +1,6 @@
-import { createElement, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import Icon from "@/components/ui/Icon";
 
 const SPIN_MS = 620;
 // The icon swaps while the button is upside down; the theme lands just before it stops.
@@ -71,7 +73,7 @@ export default function ThemeToggle() {
     >
       {/* A fixed square for the icon, so swapping moon for sun cannot resize the button mid-spin. */}
       <span ref={iconRef} className="inline-flex size-[1.15em] items-center justify-center">
-        {createElement("ion-icon", { name: dark ? "sunny" : "moon" })}
+        <Icon name={dark ? "sunny" : "moon"} />
       </span>
     </button>
   );

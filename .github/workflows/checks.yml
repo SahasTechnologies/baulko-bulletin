@@ -1,0 +1,29 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the runtime @astrojs/vercel deploys to, so CI and
+          # production agree about what the code runs on.
+          node-version: 24
+          cache: npm
+
+      # Also runs postinstall, which copies the pdf.js worker and wasm assets
+      # this repo serves from public/pdfjs/.
+      - run: npm ci
+
+      - run: npx astro check
+
+      # Nothing here needs the database: every page is server-rendered, so no
+      # query runs at build time.
+      - run: npm run build

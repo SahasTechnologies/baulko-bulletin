@@ -1,4 +1,6 @@
-import { createElement, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import Icon from "@/components/ui/Icon";
 
 /**
  * pdf.js 6's modern build calls `Uint8Array.prototype.toHex()`, a method that only
@@ -553,7 +555,7 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
             className={iconButton}
             aria-label="Previous page"
           >
-            {createElement("ion-icon", { name: "chevron-back" })}
+            <Icon name="chevron-back" />
           </button>
 
           {editingPage ? (
@@ -591,7 +593,7 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
             className={iconButton}
             aria-label="Next page"
           >
-            {createElement("ion-icon", { name: "chevron-forward" })}
+            <Icon name="chevron-forward" />
           </button>
         </div>
 
@@ -603,7 +605,7 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
             aria-label="Share this page"
             aria-expanded={shareOpen}
           >
-            {createElement("ion-icon", { name: "share-social" })}
+            <Icon name="share-social" />
           </button>
           <button
             type="button"
@@ -615,7 +617,7 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
             {downloading ? (
               <span className="pdfSpinner" aria-hidden="true" />
             ) : (
-              createElement("ion-icon", { name: "download" })
+              <Icon name="download" />
             )}
           </button>
 

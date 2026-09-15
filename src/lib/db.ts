@@ -2,9 +2,12 @@ import { neon } from "@neondatabase/serverless";
 import type {
   ContactRecipient,
   Extra,
+  ExtraCard,
   PageContent,
   Post,
+  PostCard,
   Puzzle,
+  PuzzleSummary,
   Settings,
 } from "@/types/content";
 
@@ -69,6 +72,25 @@ function mapPost(row: Record<string, unknown>): Post {
   };
 }
 
+function mapPostCard(row: Record<string, unknown>): PostCard {
+  return {
+    id: asText(row.id),
+    title: asText(row.title),
+    slug: asText(row.slug),
+    excerpt: row.excerpt == null ? null : asText(row.excerpt),
+    cover_image_url: row.cover_image_url == null ? null : asText(row.cover_image_url),
+    cover_image_alt: row.cover_image_alt == null ? null : asText(row.cover_image_alt),
+    date: asText(row.date),
+  };
+}
+
+function mapExtraCard(row: Record<string, unknown>): ExtraCard {
+  return {
+    ...mapPostCard(row),
+    author_name: row.author_name == null ? null : asText(row.author_name),
+  };
+}
+
 function mapExtra(row: Record<string, unknown>): Extra {
   return {
     id: asText(row.id),
@@ -83,17 +105,17 @@ function mapExtra(row: Record<string, unknown>): Extra {
   };
 }
 
-function mapPuzzle(
+/** The columns a listing draws, plus the issue it belongs to. */
+function mapPuzzleSummary(
   row: Record<string, unknown>,
   postsById: Map<string, { slug: string; title: string }>
-): Puzzle {
+): PuzzleSummary {
   const postId = row.post_id == null ? null : asText(row.post_id);
   const post = postId ? postsById.get(postId) : undefined;
   return {
     id: asText(row.id),
     title: asText(row.title),
     type: asText(row.type),
-    data: asText(row.data),
     date: asText(row.date),
     author_name: row.author_name == null ? null : asText(row.author_name),
     cover_image_url: row.cover_image_url == null ? null : asText(row.cover_image_url),
@@ -101,6 +123,14 @@ function mapPuzzle(
     post_slug: post?.slug ?? null,
     post_title: post?.title ?? null,
   };
+}
+
+/** A summary plus the grid the reader renders. */
+function mapPuzzle(
+  row: Record<string, unknown>,
+  postsById: Map<string, { slug: string; title: string }>
+): Puzzle {
+  return { ...mapPuzzleSummary(row, postsById), data: asText(row.data) };
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -124,10 +154,21 @@ export async function getLatestPost(): Promise<Post | null> {
   }, null);
 }
 
-export async function getMorePosts(limit = 100): Promise<Post[]> {
+// Card-only column lists. `SELECT *` here also pulled `content` and `pdf_url`,
+// which the cards never read — but the homepage hands these rows to a
+// `client:load` island, and every prop it receives is serialised into the page.
+const POST_CARD_COLUMNS = `id, title, slug, excerpt, cover_image_url, cover_image_alt, date`;
+
+export async function getMorePosts(limit = 100): Promise<PostCard[]> {
   return run(async (sql) => {
-    const rows = await sql`SELECT * FROM posts ORDER BY date DESC OFFSET 1 LIMIT ${limit}`;
-    return rows.map((row) => mapPost(row as Record<string, unknown>));
+    const rows = await sql`
+      SELECT ${sql.unsafe(POST_CARD_COLUMNS)}
+      FROM posts
+      ORDER BY date DESC
+      OFFSET 1
+      LIMIT ${limit}
+    `;
+    return rows.map((row) => mapPostCard(row as Record<string, unknown>));
   }, []);
 }
 
@@ -148,15 +189,17 @@ export async function getAllPostSlugs(): Promise<string[]> {
 // Extras and puzzles store an author_id, so the byline name has to come from the
 // authors table — `SELECT *` alone leaves `author_name` empty and every story
 // reads "Anonymous".
-export async function getAllExtras(): Promise<Extra[]> {
+export async function getAllExtras(): Promise<ExtraCard[]> {
   return run(async (sql) => {
     const rows = await sql`
-      SELECT extras.*, authors.name AS author_name
+      SELECT extras.id, extras.title, extras.slug, extras.excerpt,
+             extras.cover_image_url, extras.cover_image_alt, extras.date,
+             authors.name AS author_name
       FROM extras
       LEFT JOIN authors ON authors.id = extras.author_id
       ORDER BY extras.date DESC
     `;
-    return rows.map((row) => mapExtra(row as Record<string, unknown>));
+    return rows.map((row) => mapExtraCard(row as Record<string, unknown>));
   }, []);
 }
 
@@ -180,26 +223,59 @@ export async function getAllExtraSlugs(): Promise<string[]> {
   }, []);
 }
 
-export async function getPuzzles(): Promise<Puzzle[]> {
+async function postsById(sql: Sql) {
+  const posts = await sql`SELECT id, slug, title FROM posts`;
+  const map = new Map<string, { slug: string; title: string }>();
+  for (const p of posts as { id: string; slug: string; title: string }[]) {
+    map.set(asText(p.id), { slug: asText(p.slug), title: asText(p.title) });
+  }
+  return map;
+}
+
+/**
+ * The puzzles, newest first, without their solution grids. `data` is the whole
+ * puzzle — a few kilobytes each — and only the reader on the puzzle's own page
+ * needs it; a listing draws the title, type, date, author and cover.
+ */
+export async function getPuzzles(): Promise<PuzzleSummary[]> {
+  return run(async (sql) => {
+    const rows = await sql`
+      SELECT puzzles.id, puzzles.title, puzzles.type, puzzles.date,
+             puzzles.cover_image_url, puzzles.post_id,
+             authors.name AS author_name
+      FROM puzzles
+      LEFT JOIN authors ON authors.id = puzzles.author_id
+      ORDER BY puzzles.date DESC
+    `;
+    const byId = await postsById(sql);
+    return rows.map((row) => mapPuzzleSummary(row as Record<string, unknown>, byId));
+  }, []);
+}
+
+/**
+ * The puzzle at `index` in the newest-first list above — the same order, and
+ * therefore the same URL, the puzzles page links with. It carries `data`, since
+ * this is the one caller that renders the puzzle itself.
+ */
+export async function getPuzzleByIndex(index: number): Promise<Puzzle | null> {
+  if (!Number.isInteger(index) || index < 0) return null;
   return run(async (sql) => {
     const rows = await sql`
       SELECT puzzles.*, authors.name AS author_name
       FROM puzzles
       LEFT JOIN authors ON authors.id = puzzles.author_id
       ORDER BY puzzles.date DESC
+      OFFSET ${index} LIMIT 1
     `;
-    const posts = await sql`SELECT id, slug, title FROM posts`;
-    const postsById = new Map<string, { slug: string; title: string }>();
-    for (const p of posts as { id: string; slug: string; title: string }[]) {
-      postsById.set(asText(p.id), { slug: asText(p.slug), title: asText(p.title) });
-    }
-    return rows.map((row) => mapPuzzle(row as Record<string, unknown>, postsById));
-  }, []);
+    if (!rows[0]) return null;
+    const byId = await postsById(sql);
+    return mapPuzzle(rows[0] as Record<string, unknown>, byId);
+  }, null);
 }
 
 /** A puzzle plus its position in the newest-first list, which forms its public URL. */
 export interface IndexedPuzzle {
-  puzzle: Puzzle;
+  puzzle: PuzzleSummary;
   index: number;
 }
 

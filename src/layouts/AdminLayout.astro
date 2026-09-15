@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
+import Icon from "@/components/ui/Icon.astro";
 import { getSettings } from "@/lib/db";
 
 export const prerender = false;
@@ -49,7 +50,7 @@ const isActive = (href: string) =>
           target="_blank"
           rel="noreferrer"
         >
-          <ion-icon name="open-outline"></ion-icon>
+          <Icon name="open-outline" />
           View site
         </a>
         <form action="/api/admin/logout" method="POST">
@@ -58,7 +59,7 @@ const isActive = (href: string) =>
             type="submit"
             class="inline-flex items-center gap-1.5 rounded-full border border-black/15 px-5 py-2 text-lg transition-transform hover:scale-105 dark:border-white/20"
           >
-            <ion-icon name="log-out-outline"></ion-icon>
+            <Icon name="log-out-outline" />
             Sign out
           </button>
         </form>
@@ -76,7 +77,7 @@ const isActive = (href: string) =>
               isActive(link.href) ? "underline decoration-2 underline-offset-4" : "opacity-70",
             ]}
           >
-            <ion-icon name={link.icon}></ion-icon>
+            <Icon name={link.icon} />
             {link.label}
           </a>
         ))
@@ -84,5 +85,20 @@ const isActive = (href: string) =>
     </nav>
 
     <slot />
+
+    {/* One listener for the whole panel instead of an inline `onsubmit` per form.
+        A handler written as `onsubmit="return confirm('Delete “…”)'` interpolates
+        the row's title into JavaScript source, so a title containing a quote or a
+        backslash turned the handler into a syntax error and the form submitted
+        without ever asking. `data-confirm` is a plain attribute, escaped by the
+        template, and never parsed as code. */}
+    <script is:inline>
+      document.addEventListener("submit", (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement)) return;
+        const message = form.dataset.confirm;
+        if (message && !window.confirm(message)) event.preventDefault();
+      });
+    </script>
   </div>
 </BaseLayout>

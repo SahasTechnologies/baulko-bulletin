@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import Icon from "@/components/ui/Icon";
 
 export default function Byline({ name }: { name: string }) {
   const isTeam = name.trim().toLowerCase() === "team bulletin";
@@ -14,7 +14,7 @@ export default function Byline({ name }: { name: string }) {
           src="/bulletin.png"
         />
       ) : (
-        createElement("ion-icon", { name: "person-circle" })
+        <Icon name="person-circle" />
       )}
       <span>{name}</span>
     </div>

@@ -1,4 +1,5 @@
 ---
+import Icon from "@/components/ui/Icon.astro";
 import MediaField from "@/components/admin/MediaField";
 import PuzzleDataEditor from "@/components/admin/PuzzleDataEditor";
 import { escapeHtml, isoToDateInput, maxLengthFor } from "@/lib/admin";
@@ -95,6 +96,15 @@ function isFull(field: { full?: boolean; type: string }): boolean {
                   {option}
                 </option>
               ))}
+              {/* A stored value the list no longer offers — an older puzzle type,
+                  say — has to stay selectable. Without it the browser preselects
+                  the first option, so the editor sees “Crossword” and the next
+                  save silently rewrites the row. */}
+              {value && !(field.options ?? []).includes(value) && (
+                <option value={value} selected>
+                  {value} (not in the list)
+                </option>
+              )}
             </select>
           ) : (
             <input
@@ -125,7 +135,7 @@ function isFull(field: { full?: boolean; type: string }): boolean {
       type="submit"
       class="inline-flex items-center gap-2 rounded-full bg-black px-8 py-3 text-lg font-bold text-white transition-transform hover:scale-105 dark:bg-white dark:text-black"
     >
-      <ion-icon name="save"></ion-icon>
+      <Icon name="save" />
       {submitLabel}
     </button>
     <a href={cancelHref} class="underline underline-offset-4 opacity-70 hover:opacity-100">Cancel</a>

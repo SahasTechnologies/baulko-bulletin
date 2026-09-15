@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
+import Icon from "@/components/ui/Icon.astro";
 import { getSettings } from "@/lib/db";
 import { adminConfigured, adminPassword } from "@/lib/auth";
 import { flashFromUrl, safeAdminPath } from "@/lib/admin";
@@ -84,7 +85,7 @@ const inputClass =
                 type="submit"
                 class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-black py-3 px-8 text-lg font-bold text-white transition-transform hover:scale-[1.02] dark:bg-white dark:text-black"
               >
-                <ion-icon name="lock-closed"></ion-icon>
+                <Icon name="lock-closed" />
                 Sign in
               </button>
             </form>

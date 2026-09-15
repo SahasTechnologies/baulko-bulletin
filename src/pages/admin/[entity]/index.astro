@@ -1,6 +1,7 @@
 ---
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import Flash from "@/components/admin/Flash.astro";
+import Icon from "@/components/ui/Icon.astro";
 import { ENTITIES, isEntityKey, type ContentRow } from "@/lib/admin-entities";
 import { listRows } from "@/lib/admin-db";
 import { flashFromUrl, isoToDateInput } from "@/lib/admin";
@@ -51,7 +52,7 @@ function cell(row: ContentRow, field: string): string {
       href={`${base}/new`}
       class="inline-flex items-center gap-2 rounded-full bg-black px-7 py-3 text-lg font-bold text-white transition-transform hover:scale-105 dark:bg-white dark:text-black"
     >
-      <ion-icon name="add"></ion-icon>
+      <Icon name="add" />
       New {def.singular.toLowerCase()}
     </a>
   </div>
@@ -110,7 +111,7 @@ function cell(row: ContentRow, field: string): string {
                       <form
                         action="/api/admin/content"
                         method="POST"
-                        onsubmit={`return confirm('Delete “${cell(row, "title")}”? This cannot be undone.')`}
+                        data-confirm={`Delete “${cell(row, "title")}”? This cannot be undone.`}
                       >
                         <input type="hidden" name="csrf" value={csrf} />
                         <input type="hidden" name="entity" value={def.key} />

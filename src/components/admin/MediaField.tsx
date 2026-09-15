@@ -18,7 +18,9 @@
  * surrounding Astro form still submits a plain URL as it always did.
  */
 
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import Icon from "@/components/ui/Icon";
 
 type Kind = "image" | "pdf";
 
@@ -339,7 +341,7 @@ export default function MediaField({
           />
         ) : null}
         <button type="button" className={buttonClass} onClick={() => inputRef.current?.click()} disabled={busy}>
-          {createElement("ion-icon", { name: kind === "pdf" ? "document-attach-outline" : "image-outline" })}
+          <Icon name={kind === "pdf" ? "document-attach-outline" : "image-outline"} />
           {url ? (kind === "pdf" ? "Replace PDF" : "Choose another image") : kind === "pdf" ? "Upload PDF" : "Upload image"}
         </button>
         {url ? (
@@ -460,7 +462,7 @@ export default function MediaField({
 
           <div className="mt-4 flex flex-wrap items-center gap-4">
             <button type="button" className={primaryButtonClass} onClick={uploadCrop} disabled={busy}>
-              {createElement("ion-icon", { name: "cloud-upload-outline" })}
+              <Icon name="cloud-upload-outline" />
               Crop and upload
             </button>
             <button

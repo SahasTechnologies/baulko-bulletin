@@ -13,7 +13,10 @@ const settings = await getSettings();
 const post = await getPostBySlug(slug!);
 
 if (!post) {
-  return Astro.redirect("/404");
+  // A real 404 rather than a redirect: /posts/<typo> used to 302 to /404, which
+  // reads to a crawler as "this issue moved" and soft-404s the page twice over.
+  Astro.response.status = 404;
+  return Astro.rewrite("/404");
 }
 
 const morePosts = (await getMorePosts(8)).filter((p) => p.id !== post.id).slice(0, 2);

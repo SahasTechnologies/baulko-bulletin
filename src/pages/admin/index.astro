@@ -1,6 +1,7 @@
 ---
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import Flash from "@/components/admin/Flash.astro";
+import Icon from "@/components/ui/Icon.astro";
 import { flashFromUrl } from "@/lib/admin";
 import { adminPassword, adminConfigured } from "@/lib/auth";
 import { getCounts, listAuthorCount, type AdminCounts } from "@/lib/admin-db";
@@ -91,7 +92,7 @@ const cards = [
       cards.map((card) => (
         <article class="flex flex-col rounded-2xl border border-black/10 p-6 dark:border-white/15">
           <div class="mb-3 flex items-center gap-2 text-lg font-medium opacity-70">
-            <ion-icon name={card.icon}></ion-icon>
+            <Icon name={card.icon} />
             {card.label}
           </div>
           <div class="text-5xl font-black tracking-tighter">{card.value}</div>
@@ -111,7 +112,7 @@ const cards = [
       class="flex items-center justify-between rounded-2xl border border-black/10 p-6 transition-transform hover:scale-[1.02] dark:border-white/15"
     >
       <span class="flex items-center gap-2 text-lg">
-        <ion-icon name="mail"></ion-icon>
+        <Icon name="mail" />
         Contact messages
       </span>
       <span class="text-3xl font-black tracking-tighter">{counts?.unread ?? 0}</span>
@@ -121,7 +122,7 @@ const cards = [
       class="flex items-center justify-between rounded-2xl border border-black/10 p-6 transition-transform hover:scale-[1.02] dark:border-white/15"
     >
       <span class="flex items-center gap-2 text-lg">
-        <ion-icon name="document-text"></ion-icon>
+        <Icon name="document-text" />
         About / FAQ / Join
       </span>
       <span class="opacity-60">Edit</span>
@@ -131,7 +132,7 @@ const cards = [
       class="flex items-center justify-between rounded-2xl border border-black/10 p-6 transition-transform hover:scale-[1.02] dark:border-white/15"
     >
       <span class="flex items-center gap-2 text-lg">
-        <ion-icon name="options"></ion-icon>
+        <Icon name="options" />
         Site settings
       </span>
       <span class="text-3xl font-black tracking-tighter">{authors}<span class="ml-2 text-sm font-medium opacity-60">authors</span></span>
@@ -142,23 +143,23 @@ const cards = [
     <h2 class="mb-4 text-lg font-semibold">Security</h2>
     <ul class="space-y-2 opacity-80">
       <li>
-        <ion-icon name={dedicatedSecret ? "checkmark-circle" : "information-circle"}></ion-icon>
+        <Icon name={dedicatedSecret ? "checkmark-circle" : "information-circle"} />
         Session signing key:
         {dedicatedSecret
           ? "ADMIN_SESSION_SECRET is set."
           : "derived from ADMIN_PASSWORD — set ADMIN_SESSION_SECRET to rotate sessions independently."}
       </li>
       <li>
-        <ion-icon name="shield-checkmark"></ion-icon>
+        <Icon name="shield-checkmark" />
         Sessions are HttpOnly, SameSite=Strict cookies, valid for 12 hours and renewed while you work.
       </li>
       <li>
-        <ion-icon name="finger-print"></ion-icon>
+        <Icon name="finger-print" />
         Writes need the session cookie plus a per-session CSRF token; cross-origin submits are
         rejected.
       </li>
       <li>
-        <ion-icon name="hourglass"></ion-icon>
+        <Icon name="hourglass" />
         Logins are rate limited per IP (8 failures per 10 minutes) with a delay on every failure.
       </li>
     </ul>

@@ -151,7 +151,6 @@ export function Crossword({ puzzle }: {
               if (!word) {
                 return null;
               }
-              debugger
               return apply_move({
                 'next': {
                   'across': 'right',
