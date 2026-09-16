@@ -172,6 +172,18 @@ export async function getMorePosts(limit = 100): Promise<PostCard[]> {
   }, []);
 }
 
+// Every issue including the hero, newest first — what the /posts listing shows.
+export async function getAllPostCards(): Promise<PostCard[]> {
+  return run(async (sql) => {
+    const rows = await sql`
+      SELECT ${sql.unsafe(POST_CARD_COLUMNS)}
+      FROM posts
+      ORDER BY date DESC
+    `;
+    return rows.map((row) => mapPostCard(row as Record<string, unknown>));
+  }, []);
+}
+
 export async function getPostBySlug(slug: string): Promise<Post | null> {
   return run(async (sql) => {
     const rows = await sql`SELECT * FROM posts WHERE slug = ${slug} LIMIT 1`;
@@ -189,16 +201,26 @@ export async function getAllPostSlugs(): Promise<string[]> {
 // Extras and puzzles store an author_id, so the byline name has to come from the
 // authors table — `SELECT *` alone leaves `author_name` empty and every story
 // reads "Anonymous".
-export async function getAllExtras(): Promise<ExtraCard[]> {
+export async function getAllExtras(limit?: number): Promise<ExtraCard[]> {
   return run(async (sql) => {
-    const rows = await sql`
-      SELECT extras.id, extras.title, extras.slug, extras.excerpt,
-             extras.cover_image_url, extras.cover_image_alt, extras.date,
-             authors.name AS author_name
-      FROM extras
-      LEFT JOIN authors ON authors.id = extras.author_id
-      ORDER BY extras.date DESC
-    `;
+    const rows = limit
+      ? await sql`
+          SELECT extras.id, extras.title, extras.slug, extras.excerpt,
+                 extras.cover_image_url, extras.cover_image_alt, extras.date,
+                 authors.name AS author_name
+          FROM extras
+          LEFT JOIN authors ON authors.id = extras.author_id
+          ORDER BY extras.date DESC
+          LIMIT ${limit}
+        `
+      : await sql`
+          SELECT extras.id, extras.title, extras.slug, extras.excerpt,
+                 extras.cover_image_url, extras.cover_image_alt, extras.date,
+                 authors.name AS author_name
+          FROM extras
+          LEFT JOIN authors ON authors.id = extras.author_id
+          ORDER BY extras.date DESC
+        `;
     return rows.map((row) => mapExtraCard(row as Record<string, unknown>));
   }, []);
 }
