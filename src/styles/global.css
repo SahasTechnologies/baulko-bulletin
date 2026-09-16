@@ -88,6 +88,136 @@ button:not(:disabled):active {
   stroke-width: var(--ionicon-stroke-width, 32px);
 }
 
+/* Icon-only nav rows — used by the public NavLinks and the admin panel's
+   section nav.
+
+   Layout: one nowrap flex row of icon-sized cells. Nothing is reserved up
+   front, so the icons stay packed together and the row is barely wider than
+   the icons themselves; when a label slides out it grows into the free space
+   beside it and pushes the icons after it to the right.
+
+   `flex-wrap: nowrap` is what keeps this stable on every device: the row can
+   never break onto a second line, so hovering even the longest label can only
+   move icons sideways — it can never re-flow the nav. The narrow-screen rule
+   below shrinks the row enough that the longest label opening next to the
+   current page's already-open label still fits the smallest phone width we
+   support.
+
+   Hover/focus slides the label in from the left; the link for the page you
+   are on keeps its label out permanently (aria-current="page"). Pure CSS, so
+   it works before hydration and without JS. */
+.icon-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  /* The row owns its spacing so every call site lays out identically: tight
+     on phones, roomy on wide screens. */
+  column-gap: clamp(0.75rem, 2.5vw, 2rem);
+}
+
+/* Cells are content-sized and never shrink: an item is exactly its icon (plus
+   its label while that is open), so the nav's footprint stays as small as the
+   icons allow. */
+.icon-nav-item {
+  display: flex;
+  flex: none;
+}
+
+/* Phones: shrink the row a touch, otherwise the widest label ("Dashboard" in
+   the admin nav, "Contact" on the public one) opening beside the current
+   page's already-open label would push past a 375px-wide screen. */
+@media (max-width: 30rem) {
+  .icon-nav {
+    column-gap: 0.6rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* Narrower still (320px-class screens): trim again so the worst-case row
+   still fits inside the page gutter. */
+@media (max-width: 23rem) {
+  .icon-nav {
+    column-gap: 0.4rem;
+    font-size: 0.8rem;
+  }
+}
+
+/* The link clips its own box, so the label can slide out from behind the
+   icon without ever spilling past its own box. */
+.icon-nav-link {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  overflow: hidden;
+  white-space: nowrap;
+  border-radius: 4px;
+}
+
+/* The icon sits above the label, so the label appears to emerge from under
+   it; rotating the icon on hover keeps the little flourish the old nav had. */
+.icon-nav-link .icon {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  transition: transform 300ms ease;
+}
+
+.icon-nav-link:hover .icon {
+  transform: rotate(12deg);
+}
+
+/* Collapsed to zero width; expanded on hover/focus/current page. max-width
+   (rather than width) is what makes the push-the-icons-over effect animate. */
+.icon-nav-label {
+  display: inline-block;
+  overflow: hidden;
+  max-width: 0;
+  margin-left: 0;
+  opacity: 0;
+  transform: translateX(-100%);
+  transition:
+    max-width 350ms ease,
+    margin-left 350ms ease,
+    opacity 250ms ease,
+    transform 350ms ease;
+}
+
+.icon-nav-link:hover .icon-nav-label,
+.icon-nav-link:focus-visible .icon-nav-label,
+.icon-nav-link[aria-current="page"] .icon-nav-label {
+  max-width: 8em;
+  margin-left: 0.4em;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.icon-nav-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-nav-link .icon,
+  .icon-nav-label {
+    transition: none;
+  }
+}
+
+/* The admin panel's nav sits on a plain background where an icon alone can
+   read as ambiguous, so links there sit at full opacity and the current
+   section's label stays open with an underline instead. "Dashboard" is its
+   longest label and the nav runs at text-lg. */
+.icon-nav-admin .icon-nav-link {
+  opacity: 1;
+}
+
+.icon-nav-admin .icon-nav-link[aria-current="page"] {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
 /* Loading circle shown while a download is being fetched. */
 .pdfSpinner {
   width: 1.05em;

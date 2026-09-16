@@ -1,4 +1,5 @@
 import type { ExtraCard, PostCard } from "@/types/content";
+import Icon from "./Icon";
 import CoverImage from "./CoverImage";
 import DateComponent from "./DateComponent";
 import Byline from "./Byline";
@@ -39,60 +40,95 @@ function Card({
   );
 }
 
+/**
+ * One horizontally-scrolling card row: a heading, the cards, and — when the
+ * caller says there are more of the same kind of story — a "View More" link
+ * to the full listing page (/posts or /extras).
+ */
+type CardItem = (PostCard | ExtraCard) & { href: string; author: string };
+
+function CardRow({
+  heading,
+  cards,
+  moreHref,
+  moreLabel,
+}: {
+  heading: string;
+  cards: CardItem[];
+  moreHref: string;
+  /** Empty hides the link entirely (e.g. the issues row already shows everything). */
+  moreLabel: string;
+}) {
+  return (
+    <>
+      <h2 className="mb-8 text-4xl font-bold leading-tight tracking-tighter md:text-5xl">
+        {heading}
+      </h2>
+      <div className="mb-6 md:mb-12 pb-2 flex snap-x snap-mandatory overflow-x-scroll gap-x-8 lg:gap-x-10">
+        {cards.map((card) => (
+          <Card
+            key={card.id}
+            href={card.href}
+            title={card.title}
+            date={card.date}
+            excerpt={card.excerpt}
+            cover={card.cover_image_url}
+            alt={card.cover_image_alt}
+            author={card.author}
+          />
+        ))}
+      </div>
+      {moreLabel && (
+        <a
+          href={moreHref}
+          className="inline-flex items-center gap-2 text-lg font-bold hover:underline"
+        >
+          {moreLabel}
+          <Icon name="chevron-forward" />
+        </a>
+      )}
+    </>
+  );
+}
+
 export default function MoreStories({
   posts,
   extras = [],
   heading = "Previous Issues",
+  showAllIssuesLink = false,
+  showAllExtrasLink = false,
 }: {
   posts: PostCard[];
   extras?: ExtraCard[];
   heading?: string;
+  /** Link the issues row to /posts, for when this list is truncated. */
+  showAllIssuesLink?: boolean;
+  /** Link the extras row to /extras, for when this list is truncated. */
+  showAllExtrasLink?: boolean;
 }) {
   if (!posts.length && !extras.length) return null;
 
   return (
     <aside>
       {posts.length > 0 && (
-        <>
-          <h2 className="mb-8 text-4xl font-bold leading-tight tracking-tighter md:text-5xl">
-            {heading}
-          </h2>
-          <div className="mb-6 md:mb-12 pb-2 flex snap-x snap-mandatory overflow-x-scroll gap-x-8 lg:gap-x-10">
-            {posts.map((post) => (
-              <Card
-                key={post.id}
-                href={`/posts/${post.slug}`}
-                title={post.title}
-                date={post.date}
-                excerpt={post.excerpt}
-                cover={post.cover_image_url}
-                alt={post.cover_image_alt}
-                author="Team Bulletin"
-              />
-            ))}
-          </div>
-        </>
+        <CardRow
+          heading={heading}
+          cards={posts.map((post) => ({ ...post, href: `/posts/${post.slug}`, author: "Team Bulletin" }))}
+          moreHref="/posts"
+          moreLabel={showAllIssuesLink ? "View More Issues" : ""}
+        />
       )}
       {extras.length > 0 && (
-        <>
-          <h2 className="mb-8 text-4xl font-bold leading-tight tracking-tighter md:text-5xl">
-            Extras
-          </h2>
-          <div className="mb-6 md:mb-12 pb-4 md:pb-6 flex snap-x snap-mandatory overflow-x-scroll gap-x-8 lg:gap-x-10">
-            {extras.map((extra) => (
-              <Card
-                key={extra.id}
-                href={`/extras/${extra.slug}`}
-                title={extra.title}
-                date={extra.date}
-                excerpt={extra.excerpt}
-                cover={extra.cover_image_url}
-                alt={extra.cover_image_alt}
-                author={extra.author_name?.trim() || "Anonymous"}
-              />
-            ))}
-          </div>
-        </>
+        <CardRow
+          heading="Extras"
+          cards={extras.map((extra) => ({
+            ...extra,
+            href: `/extras/${extra.slug}`,
+            author: extra.author_name?.trim() || "Anonymous",
+          }))}
+          moreHref="/extras"
+          moreLabel={showAllExtrasLink ? "View More Extras" : ""}
+        />
       )}
     </aside>
   );

@@ -9,8 +9,8 @@ import { getSettings, getLatestPost, getMorePosts, getAllExtras } from "@/lib/db
 
 const settings = await getSettings();
 const heroPost = await getLatestPost();
-const morePosts = await getMorePosts(100);
-const extras = await getAllExtras();
+const morePosts = await getMorePosts(5);
+const extras = await getAllExtras(5);
 ---
 
 <BaseLayout settings={settings}>
@@ -61,6 +61,6 @@ const extras = await getAllExtras();
       </article>
     ) : null}
 
-    <MoreStories client:load posts={morePosts} extras={extras} heading="Previous Issues" />
+    <MoreStories client:load posts={morePosts} extras={extras} heading="Previous Issues" showAllIssuesLink showAllExtrasLink />
   </div>
 </BaseLayout>

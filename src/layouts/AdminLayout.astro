@@ -66,20 +66,19 @@ const isActive = (href: string) =>
       </div>
     </header>
 
-    <nav class="mb-10 flex flex-wrap items-center gap-x-6 gap-y-3 text-lg font-medium">
+    <nav class="icon-nav icon-nav-admin mb-10 text-lg font-medium">
       {
         links.map((link) => (
-          <a
-            href={link.href}
-            aria-current={isActive(link.href) ? "page" : undefined}
-            class:list={[
-              "inline-flex items-center gap-1.5 transition-transform hover:scale-105",
-              isActive(link.href) ? "underline decoration-2 underline-offset-4" : "opacity-70",
-            ]}
-          >
-            <Icon name={link.icon} />
-            {link.label}
-          </a>
+          <div class="icon-nav-item">
+            <a
+              href={link.href}
+              aria-current={isActive(link.href) ? "page" : undefined}
+              class="icon-nav-link"
+            >
+              <Icon name={link.icon} />
+              <span class="icon-nav-label">{link.label}</span>
+            </a>
+          </div>
         ))
       }
     </nav>

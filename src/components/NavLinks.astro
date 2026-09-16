@@ -9,25 +9,38 @@ interface Props {
 const extraClass = Astro.props.class || "";
 
 const links = [
+  { href: "/", icon: "home", label: "Home" },
+  { href: "/posts", icon: "newspaper", label: "Articles" },
+  { href: "/extras", icon: "color-wand", label: "Extras" },
+  { href: "/puzzles", icon: "extension-puzzle", label: "Puzzles" },
   { href: "/about", icon: "information-circle", label: "About" },
   { href: "/faq", icon: "help-circle", label: "FAQ" },
   { href: "/join", icon: "people", label: "Join" },
-  { href: "/puzzles", icon: "extension-puzzle", label: "Puzzles" },
+  { href: "/contact", icon: "chatbubbles", label: "Contact" },
 ];
+
+const currentPath = Astro.url.pathname.replace(/\/+$/, "") || "/";
+
+const isActive = (href: string) =>
+  href === "/" ? currentPath === "/" : currentPath === href || currentPath.startsWith(`${href}/`);
 ---
 
-<nav class:list={["flex flex-wrap items-center justify-center lg:justify-start text-xl gap-8 lg:gap-12 font-medium", extraClass]}>
-  {links.map((link) => (
-    <a
-      class="group inline-flex items-center gap-1.5 transition-transform duration-300 ease-out hover:scale-[1.15]"
-      href={link.href}
-    >
-      <Icon
-        name={link.icon}
-        class="transition-transform duration-300 ease-out group-hover:rotate-12"
-      />
-      {link.label}
-    </a>
-  ))}
-  <ThemeToggle client:load />
+<nav class:list={["icon-nav text-xl font-medium", extraClass]}>
+  {
+    links.map((link) => (
+      <div class="icon-nav-item">
+        <a
+          href={link.href}
+          aria-current={isActive(link.href) ? "page" : undefined}
+          class="icon-nav-link"
+        >
+          <Icon name={link.icon} />
+          <span class="icon-nav-label">{link.label}</span>
+        </a>
+      </div>
+    ))
+  }
+  <div class="icon-nav-item">
+    <ThemeToggle client:load />
+  </div>
 </nav>
