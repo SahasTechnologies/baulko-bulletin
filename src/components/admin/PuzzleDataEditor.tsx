@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Builders for the three puzzle types, so a puzzle can be typed in as words and
- * clues rather than as the compact text the public components parse.
+ * Builders for the three puzzle types, so a puzzle can be typed in as words
+ * and clues rather than as the compact text the public readers parse.
  *
  * The stored format is unchanged — this component only writes it:
  *
@@ -10,14 +10,22 @@
  *   Find-A-Word     the grid rows, a blank line, then the hidden words
  *   Unscramble      one per line: `scrambled answer`
  *
+ * Parsing and validation go through `lib/puzzle-data` — the exact code the
+ * public readers use — so a value the builder accepts is a value every
+ * reader can play. The panel below the fields re-checks the value that will
+ * be saved on every change; while it lists problems, the form's submit
+ * button is held disabled, so malformed data cannot be saved from here.
+ * (A "raw data" view stays available, and it validates too — the point is
+ * that the text, wherever it is edited, has to fit the format before the
+ * save goes through.)
+ *
  * The builder tracks the puzzle-type select in the surrounding form, because
- * switching type has to switch which builder is on screen (and which shape gets
- * serialised). A "raw data" view stays available for the odd case where the
- * generated text needs hand-editing, and it is the fallback whenever the stored
- * value cannot be read back into the builder.
+ * switching type has to switch which builder is on screen (and which shape
+ * gets serialised).
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { parsePuzzleData, type PuzzleDataProblem } from "@/lib/puzzle-data";
 
 const TYPES = ["Crossword", "Find-A-Word", "Unscramble"] as const;
 type PuzzleType = (typeof TYPES)[number];
@@ -56,41 +64,51 @@ function isPuzzleType(value: string): value is PuzzleType {
 
 /* ------------------------------------------------------------------ parsing */
 
-function parseCrossword(data: string): CrosswordRow[] | null {
-  const rows: CrosswordRow[] = [];
-  for (const raw of data.split("\n")) {
-    const line = raw.trim();
-    if (!line) continue;
-    const match = line.match(/^(\d+)\s+(\d+)\s+(across|down)\s+(\S+)\s+(.+)$/i);
-    if (!match) return null;
-    rows.push({
-      x: match[1],
-      y: match[2],
-      direction: match[3].toLowerCase() as "across" | "down",
-      word: match[4],
-      clue: match[5].trim(),
-    });
+/**
+ * Reads a stored value back into builder state, or null when it is not in the
+ * expected shape. This is the lenient direction: editing an existing puzzle
+ * must be possible even when its data no longer parses, so unreadable values
+ * fall through to the raw editor rather than being rejected here. Validation
+ * of what will be *saved* is separate, and strict.
+ */
+function parseInto(
+  store: Store,
+  type: PuzzleType,
+  data: string
+): { store: Store } | { error: string } {
+  if (!data.trim()) return { store };
+  if (type === "Crossword") {
+    const rows: CrosswordRow[] = [];
+    for (const raw of data.split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      const match = line.match(/^(\d+)\s+(\d+)\s+(across|down)\s+(\S+)\s+(.+)$/i);
+      if (!match) return { error: "one or more lines do not fit “column row across|down word clue”." };
+      rows.push({
+        x: match[1]!,
+        y: match[2]!,
+        direction: match[3]!.toLowerCase() as "across" | "down",
+        word: match[4]!,
+        clue: match[5]!.trim(),
+      });
+    }
+    return { store: { ...store, Crossword: rows.length ? rows : store.Crossword } };
   }
-  return rows;
-}
-
-function parseFinder(data: string): Finder | null {
-  const parts = data.split("\n\n");
-  if (parts.length < 2) return null;
-  const [grid, ...rest] = parts;
-  return { grid: grid.trim(), words: rest.join("\n\n").trim() };
-}
-
-function parseUnscramble(data: string): ScrambleRow[] | null {
+  if (type === "Find-A-Word") {
+    const parts = data.split("\n\n");
+    if (parts.length < 2) return { error: "the grid and the word list must be separated by one blank line." };
+    const [grid, ...rest] = parts;
+    return { store: { ...store, "Find-A-Word": { grid: grid!.trim(), words: rest.join("\n\n").trim() } } };
+  }
   const rows: ScrambleRow[] = [];
   for (const raw of data.split("\n")) {
     const line = raw.trim();
     if (!line) continue;
     const [scrambled, answer] = line.split(/\s+/);
-    if (!scrambled || !answer) return null;
+    if (!scrambled || !answer) return { error: "one or more lines do not fit “scrambled answer”." };
     rows.push({ scrambled, answer });
   }
-  return rows;
+  return { store: { ...store, Unscramble: rows.length ? rows : store.Unscramble } };
 }
 
 function emptyStore(): Store {
@@ -102,21 +120,9 @@ function emptyStore(): Store {
 }
 
 /** Reads a stored value back into builder state, or null when it is not in the expected shape. */
-function parseInto(store: Store, type: PuzzleType, data: string): Store | null {
-  if (!data.trim()) return store;
-  if (type === "Crossword") {
-    const rows = parseCrossword(data);
-    if (!rows) return null;
-    return { ...store, Crossword: rows.length ? rows : store.Crossword };
-  }
-  if (type === "Find-A-Word") {
-    const finder = parseFinder(data);
-    if (!finder) return null;
-    return { ...store, "Find-A-Word": finder };
-  }
-  const rows = parseUnscramble(data);
-  if (!rows) return null;
-  return { ...store, Unscramble: rows.length ? rows : store.Unscramble };
+function parseIntoOrNull(store: Store, type: PuzzleType, data: string): Store | null {
+  const result = parseInto(store, type, data);
+  return "store" in result ? result.store : null;
 }
 
 /* -------------------------------------------------------------- serialising */
@@ -154,7 +160,7 @@ function serializeFinder(finder: Finder): string {
   return `${grid}\n\n${words}`;
 }
 
-/** The public component compares the typed answer to the stored one exactly, so it stays lower case and unspaced. */
+/** The public reader compares the typed answer to the stored one exactly, so it stays lower case and unspaced. */
 function serializeUnscramble(rows: ScrambleRow[]): string {
   return rows
     .map((row) => ({
@@ -184,14 +190,16 @@ export default function PuzzleDataEditor({
   const [warning, setWarning] = useState("");
 
   const [store, setStore] = useState<Store>(() => {
-    const parsed = parseInto(emptyStore(), isPuzzleType(initialType) ? initialType : "Crossword", initial);
+    const parsed = parseIntoOrNull(emptyStore(), isPuzzleType(initialType) ? initialType : "Crossword", initial);
     if (!parsed) {
       // Unreadable stored value: keep it verbatim and let the raw editor deal with it.
       return emptyStore();
     }
     return parsed;
   });
-  const [startInRaw] = useState(() => Boolean(initial.trim()) && !parseInto(emptyStore(), isPuzzleType(initialType) ? initialType : "Crossword", initial));
+  const [startInRaw] = useState(
+    () => Boolean(initial.trim()) && !parseIntoOrNull(emptyStore(), isPuzzleType(initialType) ? initialType : "Crossword", initial)
+  );
 
   useEffect(() => {
     if (startInRaw) setMode("raw");
@@ -217,6 +225,39 @@ export default function PuzzleDataEditor({
     return serializeUnscramble(store.Unscramble);
   }, [mode, raw, store, type]);
 
+  /**
+   * What the readers will make of the value as it stands. Deliberately run on
+   * every render — it is a few kilobytes of text at most — so the problem
+   * panel tracks each keystroke in the raw view and each field in the
+   * builder.
+   */
+  const problems: PuzzleDataProblem[] = useMemo(() => {
+    const parsed = parsePuzzleData(type, value);
+    return parsed.ok ? [] : parsed.problems;
+  }, [type, value]);
+
+  // Malformed data must not be savable from this form: while problems are
+  // listed, the form's submit button is held disabled. The server re-checks
+  // with the same parser, so the button is a courtesy to the editor, not the
+  // guarantee.
+  useEffect(() => {
+    const form = rootRef.current?.closest("form");
+    const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (!submit) return;
+    if (problems.length) {
+      submit.disabled = true;
+      submit.title = "Fix the puzzle problems below before saving.";
+    } else {
+      submit.disabled = false;
+      submit.title = "";
+    }
+    // Enabled again on unmount if the editor ever leaves the DOM mid-edit.
+    return () => {
+      submit.disabled = false;
+      submit.title = "";
+    };
+  }, [problems]);
+
   function toRaw() {
     setRaw(value);
     setMode("raw");
@@ -224,11 +265,9 @@ export default function PuzzleDataEditor({
   }
 
   function toBuilder() {
-    const parsed = parseInto(store, type, raw);
+    const parsed = parseIntoOrNull(store, type, raw);
     if (!parsed) {
-      setWarning(
-        "That text does not match the format for this puzzle type, so it can only be edited as raw data."
-      );
+      setWarning("That text does not match the format for this puzzle type, so it can only be edited as raw data.");
       return;
     }
     setStore(parsed);
@@ -254,7 +293,7 @@ export default function PuzzleDataEditor({
       for (let i = 0; i < word.length; i++) {
         const px = row.direction === "across" ? x + i : x;
         const py = row.direction === "down" ? y + i : y;
-        placed.push({ char: word[i], x: px, y: py });
+        placed.push({ char: word[i]!, x: px, y: py });
         width = Math.max(width, px + 1);
         height = Math.max(height, py + 1);
       }
@@ -267,6 +306,18 @@ export default function PuzzleDataEditor({
   const gridWidths = [...new Set(gridRows.map((row) => row.split(" ").length))];
 
   const scrambleRows = store.Unscramble;
+
+  const renderProblem = ({ line, message }: PuzzleDataProblem) => (
+    <li key={`${line}-${message}`}>
+      {line > 0 ? (
+        <>
+          line {line}: {message}
+        </>
+      ) : (
+        message
+      )}
+    </li>
+  );
 
   return (
     <div ref={rootRef} className="flex flex-col gap-4">
@@ -457,7 +508,7 @@ export default function PuzzleDataEditor({
             </p>
             {gridRows.length > 0 && (
               <p className="mt-1 text-sm">
-                {gridRows.length} rows × {gridRows[0].split(" ").length} columns
+                {gridRows.length} rows × {gridRows[0]!.split(" ").length} columns
                 {gridWidths.length > 1 && (
                   <span className="ml-2 text-amber-700 dark:text-amber-400" role="alert">
                     rows are {gridWidths.join(" and ")} wide — they should match
@@ -535,6 +586,15 @@ export default function PuzzleDataEditor({
             Answers are compared in lower case with spaces removed, so “Elvis Presley” becomes
             <code className="mx-1">elvispresley</code> when saved.
           </p>
+        </div>
+      )}
+
+      {problems.length > 0 && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3" role="alert">
+          <p className="mb-1 text-sm font-semibold">
+            The readers cannot play this yet — fix it before saving:
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-sm">{problems.map(renderProblem)}</ul>
         </div>
       )}
 

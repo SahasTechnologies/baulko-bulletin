@@ -1,20 +1,41 @@
 "use client"
 
 import { useState } from "react";
+import { parsePuzzleData } from "@/lib/puzzle-data";
+import { DataProblem } from "./DataProblem";
 
 export function FindAWord({ puzzle }: {
   puzzle: {
     data: string
   }
 }) {
-  const grid = puzzle.data.split('\n\n')[0].split('\n').map(row => row.split(' '))
-  const [words, setWords] = useState<any>(puzzle.data.split('\n\n')[1].split('\n').map(word => ({ word, positions: [] })))
+  // The grid and the word list come from the shared parser, which reports a
+  // missing blank line, ragged rows or a swallowed separator instead of
+  // throwing the way `split('\n\n')[1]` did on the raw text.
+  const parsed = parsePuzzleData("Find-A-Word", puzzle.data);
+  if (!parsed.ok) return <DataProblem type="Find-A-Word" problems={parsed.problems} />;
+  return <Playable grid={parsed.data.grid} wordList={parsed.data.words} />;
+}
+
+function Playable({ grid, wordList }: {
+  grid: string[][]
+  wordList: string[]
+}) {
+  const [words, setWords] = useState(wordList.map(word => ({ word, positions: [] as { x: number, y: number }[] })))
   const width = grid[0].length
   const [start, setStart] = useState<number | null>(null)
-  const isInline = (a: any, b: any) => {
-    a = { x: a % width, y: Math.floor(a / width) }
-    b = { x: b % width, y: Math.floor(b / width) }
-    return a.x == b.x || a.y == b.y || Math.abs(a.x - b.x) == Math.abs(a.y - b.y)
+  // Two cell indices are on one line when they share a row, a column, or a
+  // diagonal. The coordinates are local rather than reassigned into `a` and
+  // `b`: the parameters are indices, and the old version overwrote them with
+  // points, which only type-checked because both were `any`.
+  const isInline = (a: number, b: number) => {
+    const first = { x: a % width, y: Math.floor(a / width) }
+    const second = { x: b % width, y: Math.floor(b / width) }
+    return (
+      first.x == second.x ||
+      first.y == second.y ||
+      Math.abs(first.x - second.x) == Math.abs(first.y - second.y)
+    )
   }
 
   return <div>

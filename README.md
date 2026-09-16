@@ -26,7 +26,8 @@ Markdown and no build step between typing in the panel and the page changing.
 ```bash
 npm install
 npm run dev        # http://localhost:4321
-npm run check      # types, template diagnostics and the generated icons
+npm run check      # types, template diagnostics, the generated icons and the tests
+npm test           # just the parser tests in src/lib/*.test.ts
 npm run icons      # regenerate src/lib/icons.generated.ts after adding an icon
 npm run logo:dark  # regenerate public/bulletin-dark.png after replacing the logo
 npm run build      # production build
@@ -244,10 +245,16 @@ occasional test upload) happens in the ImageKit dashboard.
 
 ## Checks, CI and deploys
 
-`npm run check` runs `astro check` and then verifies that the generated icons are
-still in step with the source. `vercel.json` puts that in front of the build, so
-a type error — or an icon somebody forgot to generate — fails the deployment
-rather than reaching the live site.
+`npm run check` runs `astro check`, verifies that the generated icons are still in
+step with the source, and runs the parser tests in `src/lib/*.test.ts`.
+`vercel.json` puts that in front of the build, so a type error — or an icon
+somebody forgot to generate, or a parser case that regressed — fails the
+deployment rather than reaching the live site.
+
+The tests cover `src/lib/puzzle-data.ts`, which is the one place stored puzzle
+text is interpreted: the three public readers and the admin's validator all run
+through it, so a wrong answer there is a wrong answer everywhere. They need no
+test framework — Node strips the types, and the module has no imports.
 
 The install command is pinned to `npm ci --include=dev`: the checker and
 TypeScript are devDependencies, and Vercel skips those when `NODE_ENV=production`

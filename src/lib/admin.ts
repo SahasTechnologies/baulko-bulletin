@@ -11,6 +11,7 @@
 import type { AdminSession } from "@/lib/auth";
 import { requestSession, verifyCsrf } from "@/lib/auth";
 import type { EntityDef, FieldDef, FieldName } from "@/lib/admin-entities";
+import { formatPuzzleProblems, parsePuzzleData } from "@/lib/puzzle-data";
 
 /** Defence in depth: middleware also gates these routes. */
 export async function requireAdmin(request: Request): Promise<AdminSession | null> {
@@ -207,6 +208,27 @@ export function validateEntityForm(def: EntityDef, form: FormData): ValidatedVal
         values,
         error: "Slug may only contain lowercase letters, numbers and hyphens.",
       };
+    }
+    // Puzzle data is what the public readers parse, so it is held to their
+    // standard at the only place a write can happen. The parser is the exact
+    // one the readers run, meaning anything that passes here renders — the
+    // admin editor applies the same check live, so this normally fires only
+    // for a request that skipped the browser's own checks.
+    //
+    // The type is read off the form rather than out of `values`, which happens
+    // to hold it only because the type field is declared before this one. A
+    // puzzle is validated against the reader its type names, and that pairing
+    // should not depend on the order of a list in another file.
+    if (def.key === "puzzles" && field.name === "data") {
+      const type = String(form.get("type") ?? "").trim();
+      const parsed = parsePuzzleData(type, value);
+      if (!parsed.ok) {
+        const detail = formatPuzzleProblems(parsed.problems);
+        return {
+          values,
+          error: `Puzzle data does not fit the ${type || "chosen"} format — ${detail}`,
+        };
+      }
     }
   }
 

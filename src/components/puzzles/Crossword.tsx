@@ -1,14 +1,26 @@
 "use client"
 
 import { useEffect, useMemo, useState, Fragment } from "react";
+import { parsePuzzleData, type CrosswordEntry } from "@/lib/puzzle-data";
+import { DataProblem } from "./DataProblem";
 
 export function Crossword({ puzzle }: {
   puzzle: {
     data: string
   }
 }) {
-  const words = useMemo(() => [...Array.from(puzzle.data.matchAll(/(\d+) (\d+) (across|down) (.+?) (.+)/g))].map(array => Array.from(array) as any)
-    .map(([_, x, y, direction, word, clue]: [string, string, string, 'across' | 'down', string, string]) => ({ x: parseInt(x), y: parseInt(y), direction, word: word.toUpperCase(), clue })), [puzzle.data]);
+  // Parsed through the shared module: a line that does not fit
+  // `column row across|down word clue` is reported instead of silently
+  // dropped the way the old inline matchAll dropped it.
+  const parsed = useMemo(() => parsePuzzleData("Crossword", puzzle.data), [puzzle.data]);
+  if (!parsed.ok) return <DataProblem type="Crossword" problems={parsed.problems} />;
+  return <Playable entries={parsed.data.entries} />;
+}
+
+function Playable({ entries }: {
+  entries: CrosswordEntry[]
+}) {
+  const words = entries
   const starts = useMemo(() => words.map(word => ({ x: word.x, y: word.y })).filter((word, index, words) => words.findIndex(other => other.x == word.x && other.y == word.y) == index).toSorted((a, b) => a.y - b.y || a.x - b.x), [words]);
   const size = useMemo(() => {
     let size = { x: 0, y: 0 };
