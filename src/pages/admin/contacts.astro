@@ -30,10 +30,7 @@ const inputClass =
   {flash && <Flash kind={flash.kind} message={flash.message} />}
 
   <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">Contact recipients</h1>
-  <p class="mb-10 max-w-3xl text-lg opacity-70">
-    Every message sent through the contact form is emailed to these addresses. {active} of {recipients.length}
-    {recipients.length === 1 ? "address is" : "addresses are"} active.
-  </p>
+  <p class="mb-10 text-lg opacity-70">{active} of {recipients.length} active.</p>
 
   {
     dbError && (

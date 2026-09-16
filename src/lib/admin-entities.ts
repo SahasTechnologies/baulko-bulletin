@@ -42,6 +42,12 @@ export interface FieldDef {
   maxLength?: number;
   /** Renders full width in the two-column form grid. */
   full?: boolean;
+  /**
+   * Body copy: the field also gets an uploader that inserts a `<figure>` into
+   * the text at the cursor, so an illustrated piece can be written entirely in
+   * the panel rather than needing picture URLs pasted in by hand.
+   */
+  allowImages?: boolean;
 }
 
 export interface ListColumn {
@@ -53,7 +59,6 @@ export interface EntityDef {
   key: EntityKey;
   singular: string;
   plural: string;
-  blurb: string;
   /** Public URL of a saved row, for the "view" link. */
   publicHref: (row: ContentRow) => string | null;
   columns: ListColumn[];
@@ -67,7 +72,6 @@ const posts: EntityDef = {
   key: "posts",
   singular: "Issue",
   plural: "Issues",
-  blurb: "Full issues, shown as the latest issue on the home page and under Previous Issues.",
   publicHref: (row) => (row.slug ? `/posts/${row.slug}` : null),
   columns: [
     { label: "Title", field: "title" },
@@ -104,7 +108,8 @@ const posts: EntityDef = {
       type: "textarea",
       rows: 8,
       full: true,
-      help: "Only needed when there is no PDF. HTML, not Markdown — paragraphs, headings, links and images all work.",
+      allowImages: true,
+      help: "Only needed when there is no PDF. HTML, not Markdown — paragraphs, headings, links and lists all work. Use “Add a picture to the text” to upload art into the body.",
     },
   ],
 };
@@ -113,7 +118,6 @@ const extras: EntityDef = {
   key: "extras",
   singular: "Extra",
   plural: "Extras",
-  blurb: "Standalone stories, poetry and illustrations outside a numbered issue.",
   publicHref: (row) => (row.slug ? `/extras/${row.slug}` : null),
   columns: [
     { label: "Title", field: "title" },
@@ -150,7 +154,8 @@ const extras: EntityDef = {
       type: "textarea",
       rows: 12,
       full: true,
-      help: "HTML, not Markdown — paragraphs, headings, links and images all work. Use <figure><img src=\"…\"><figcaption>Caption</figcaption></figure> for a captioned picture, after uploading it above.",
+      allowImages: true,
+      help: "HTML, not Markdown — paragraphs, headings, links and lists all work. Use “Add a picture to the text” to upload art into the body, captioned or not.",
     },
   ],
 };
@@ -159,7 +164,6 @@ const puzzles: EntityDef = {
   key: "puzzles",
   singular: "Puzzle",
   plural: "Puzzles",
-  blurb: "Interactive crosswords, find-a-words and unscrambles, listed newest first.",
   publicHref: () => "/puzzles",
   columns: [
     { label: "Title", field: "title" },

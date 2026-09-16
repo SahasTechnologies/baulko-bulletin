@@ -20,10 +20,7 @@ const inputClass =
 <AdminLayout title="Settings" current="/admin/settings">
   {flash && <Flash kind={flash.kind} message={flash.message} />}
 
-  <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">Site settings</h1>
-  <p class="mb-10 text-lg opacity-70">
-    The title, description and footer used on every page, plus the default social preview.
-  </p>
+  <h1 class="mb-10 text-5xl font-bold leading-tight tracking-tighter">Site settings</h1>
 
   <form action="/api/admin/settings" method="POST" class="max-w-4xl space-y-6">
     <input type="hidden" name="csrf" value={csrf} />

@@ -45,10 +45,7 @@ function received(value: string | null, place: string | null): string {
   {flash && <Flash kind={flash.kind} message={flash.message} />}
 
   <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">Contact messages</h1>
-  <p class="mb-10 text-lg opacity-70">
-    Submissions from the contact form. {unread} unread of {messages.length}. These are also emailed to
-    the contact list when <code>RESEND_API_KEY</code> is set.
-  </p>
+  <p class="mb-10 text-lg opacity-70">{unread} unread of {messages.length}.</p>
 
   {dbError && (
     <div class="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-5">

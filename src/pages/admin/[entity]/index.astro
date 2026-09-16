@@ -46,7 +46,6 @@ function cell(row: ContentRow, field: string): string {
   <div class="mb-8 flex flex-wrap items-end justify-between gap-5">
     <div>
       <h1 class="text-5xl font-bold leading-tight tracking-tighter">{def.plural}</h1>
-      <p class="mt-2 text-lg opacity-70">{def.blurb}</p>
     </div>
     <a
       href={`${base}/new`}
@@ -136,7 +135,6 @@ function cell(row: ContentRow, field: string): string {
   }
 
   <p class="mt-6 text-sm opacity-60">
-    {rows.length} {rows.length === 1 ? def.singular.toLowerCase() : def.plural.toLowerCase()} · sorted
-    newest first
+    {rows.length} {rows.length === 1 ? def.singular.toLowerCase() : def.plural.toLowerCase()}
   </p>
 </AdminLayout>

@@ -1,8 +1,25 @@
 # Baulko Bulletin
 
 Student newspaper of Baulkham Hills High School.
-
 Visit [baulkobulletin.com](https://baulkobulletin.com).
+
+A single Astro app serves the public site and the staff panel that fills it. All
+copy — issues, extras, puzzles, page bodies and the footer — lives in Postgres,
+and every picture and PDF lives on ImageKit. There is no CMS database, no
+Markdown and no build step between typing in the panel and the page changing.
+
+## Stack
+
+| Piece | What it does |
+| --- | --- |
+| Astro 7 | Pages, routing and the server routes. Deployed to Vercel through `@astrojs/vercel`. |
+| React 19 islands | The only interactive parts: the image uploader/cropper, the puzzle builder, the theme toggle, the contact form. |
+| Tailwind CSS 4 | Styling, via `@tailwindcss/vite`. `src/styles/global.css` holds the hand-written pieces. |
+| Neon Postgres | All content. Reached with `@neondatabase/serverless` over HTTP. |
+| ImageKit | Every image and issue PDF, plus the URL transforms that crop covers. |
+| Resend | Emails contact submissions to the addresses on the contact list. |
+| pdf.js | Reads issue PDFs in the browser (`scripts/sync-pdfjs-assets.mjs` copies it into `public/pdfjs` on install and build). |
+| Cloudflare Turnstile | Optional CAPTCHA on the contact form. |
 
 ## Development
 
@@ -12,12 +29,200 @@ npm run dev        # http://localhost:4321
 npm run check      # types, template diagnostics and the generated icons
 npm run icons      # regenerate src/lib/icons.generated.ts after adding an icon
 npm run build      # production build
+npm run preview    # serve the built output
 ```
 
-Content lives in Postgres (Neon); `DATABASE_URL` is required. All copy is served
-from the `posts`, `extras`, `puzzles`, `pages`, `authors` and `settings` tables.
+`npm run dev` needs a reachable `DATABASE_URL`. Without one the public site still
+builds and serves — `src/lib/db.ts` swallows query errors and falls back to empty
+content rather than 500ing — but every listing will be empty and the admin panel
+will say so.
 
-### Checks and deploys
+## Routes
+
+| Public | What it is |
+| --- | --- |
+| `/` | The latest issue (PDF viewer or HTML body), then the five most recent issues and the five most recent extras, each with a “View more” link. |
+| `/posts` | Every issue, as cards, newest first. |
+| `/posts/<slug>` | One issue: cover, PDF viewer or HTML body, and the puzzles attached to it. |
+| `/extras` | Every extra — stories, poetry, illustrations. |
+| `/extras/<slug>` | One extra, with its author byline. |
+| `/puzzles` · `/puzzles/<index>` | The puzzle list and one interactive puzzle. `<index>` is its position in the newest-first list, not a stored id. |
+| `/about` · `/faq` · `/join` | The three editable pages, body HTML included. |
+| `/contact` | The contact form, with the recipient list from the database. |
+| `/admin` | The panel (see below). Everything under it is `noindex`, `no-store` and unframable. |
+
+Server routes: `/api/contact` is the public form; `/api/admin/{login,logout,content,pages,settings,messages,contacts,upload-auth}` are the panel's writes, all session- and CSRF-gated.
+
+## Data model
+
+There is no migration tool in this repo — the schema lives in the Neon project,
+and these are the tables the code reads and writes. A fresh database needs this
+schema created before the panel will work.
+
+| Table | Columns |
+| --- | --- |
+| `posts` | `id`, `title`, `slug`, `excerpt`, `content`, `cover_image_url`, `cover_image_alt`, `date`, `pdf_url`, `author_id` |
+| `extras` | `id`, `title`, `slug`, `excerpt`, `content`, `cover_image_url`, `cover_image_alt`, `date`, `author_id` |
+| `puzzles` | `id`, `title`, `type`, `data`, `cover_image_url`, `date`, `author_id`, `post_id` |
+| `authors` | `id`, `name`, `created_at` |
+| `pages` | `slug` (`about`, `faq`, `join`), `title`, `body_html`, `og_image_url` |
+| `settings` | one row, `id = 1`: `title`, `description`, `footer_html`, `og_image_url` |
+| `contact_submissions` | `id`, `name`, `email`, `message`, `location`, `read`, `created_at` |
+| `contact_recipients` | `id`, `email`, `name`, `active`, `created_at` |
+
+Notable conventions:
+
+- **`content` and `body_html` are HTML**, rendered with `set:html`. Paragraphs,
+  headings, links, lists and `<figure>` pictures all work; nothing is Markdown.
+- **Slugs are derived and de-duplicated.** Leave the slug blank and it is built
+  from the title; a clash gets `-2`, `-3` … appended. New issues are attributed
+  to the `Team Bulletin` author.
+- **`author_id` is resolved by name**, case-insensitively, creating the author if
+  the name is new — so the `authors` table stays a directory, not one row per
+  save. A blank author shows as “Anonymous”.
+- **Puzzle `data` is generated text.** The panel's builder writes the compact
+  format the public components parse; the raw view exists to fix something by
+  hand. `type` must match the data.
+- **`location`** on a submission is resolved once, as the message arrives, from
+  the sender's address (ip-api). It is where the message came from, not where
+  the panel is read, so rows written before the column existed show a time only.
+
+## Pictures, PDFs and where they live
+
+Nothing binary is stored in Postgres, and nothing large passes through this app:
+Vercel caps a function's request body at 4.5 MB, which an issue PDF exceeds. Every
+upload goes **browser → ImageKit directly**, signed by
+`/api/admin/upload-auth` with `IMAGEKIT_PRIVATE_KEY`; the private key never
+leaves the server and each signature is scoped to one upload attempt.
+
+| Kind | Where it goes | How the site shows it |
+| --- | --- | --- |
+| Issue cover | `bulletin/` | Cropped to the site's 2:1 shape through an ImageKit transform (`w-2000,h-1000,fo-auto`, see `src/lib/images.ts`). |
+| Puzzle art | `bulletin/` | Square 1:1 tiles. |
+| Issue PDF | `bulletin/pdfs/` | Read in the pdf.js viewer on the issue's page. |
+| A picture **inside** body copy | `bulletin/` | A plain `<figure><img src="…"><figcaption>…</figcaption></figure>` in the `content`/`body_html` HTML. |
+
+An uploaded file always gets a fresh name (`stem-ab12.jpg`): re-uploading over an
+existing name leaves ImageKit's CDN serving the old bytes at the same URL, which
+looks like the change never happened.
+
+### Writing an illustrated issue or story
+
+The panel does this end to end, with no other tool:
+
+1. **`/admin/posts/new`** (or `/admin/extras/new`): title, date, excerpt, author.
+2. **Cover image** — pick a ratio (Cover 2:1 is the site's shape), drag to choose
+   the part to keep, zoom, crop and upload. Add alt text.
+3. **Content (HTML)** — type the piece. For every picture in it, press **“Add a
+   picture to the text”**: the same crop step runs, with optional **caption** and
+   **alt text** fields, and the finished `<figure>` is written into the body at
+   the cursor. Upload as many as the piece needs; they are inserted in place.
+4. **Issue PDF** — optional, for the printed-issue viewer. With no PDF the page
+   renders the HTML body instead.
+5. **Puzzles** — attach each one to the issue in `/admin/puzzles`, and they are
+   listed at the foot of its page.
+
+This is the answer to “how is something like *Bright World, Dark Room* stored?”:
+as one row whose text is HTML and whose pictures are ImageKit URLs. The previous
+build of the site served its pictures from Sanity's CDN; nothing here reads those
+URLs, so an article brought across needs its cover and body pictures re-uploaded
+through the panel so the URLs point at ImageKit.
+
+Only the *cover* is a column (`cover_image_url`); pictures in the body are part
+of the HTML, which is why they are uploaded and inserted rather than managed in a
+gallery.
+
+## Admin panel
+
+Sign in at **`/admin/login`** with `ADMIN_PASSWORD`.
+
+| Section | What it edits |
+| --- | --- |
+| `/admin` | Counts, plus links into everything below. |
+| `/admin/posts` | Issues — title, slug, date, excerpt, PDF URL, cover, HTML content. |
+| `/admin/extras` | Extras — stories, poetry, illustrations, with an author. |
+| `/admin/puzzles` | Crosswords, find-a-words and unscrambles. |
+| `/admin/pages` | The About, FAQ and Join page bodies. |
+| `/admin/settings` | Site title, description, footer and the default social preview. |
+| `/admin/messages` | Contact submissions: read/unread, where each came from, delete. |
+| `/admin/contacts` | Who contact messages are emailed to, plus a test send. |
+
+### Puzzles
+
+Puzzles are typed in with fields rather than in the stored format: one row per
+answer with its grid position, direction and clue for a crossword; a grid plus a
+word list for a find-a-word; scrambled/answer pairs for an unscramble. The panel
+generates the compact text the public components parse, and a “raw data” view
+stays available for fixing anything by hand. A puzzle can be attached to the
+issue it appeared in.
+
+### Contact messages
+
+Submissions are saved whether or not mail is configured. Each one records the
+address it was posted from, resolved to a city and country as it is stored, so
+the panel says where a message came from rather than where it happens to be read.
+A message whose address could not be placed shows its time alone.
+
+With `RESEND_API_KEY` set, each submission is also emailed to every active address
+in `contact_recipients`; **Send a test** on `/admin/contacts` emails them all from
+the same code path the real form uses, so a passing test means the real thing
+works. Resend's shared sender (`onboarding@resend.dev`) only delivers to the
+Resend account owner — set `RESEND_EMAIL_FROM` to a verified address in
+production.
+
+### Security model
+
+- **One shared password**, compared in constant time, exchanged for a signed
+  (HMAC-SHA256) session cookie: `HttpOnly`, `SameSite=Strict`, `Secure` on https.
+- **Sessions last 12 hours** and are renewed while you work, so an active editor
+  is not signed out mid-sentence. The signing key is derived from
+  `ADMIN_PASSWORD` unless `ADMIN_SESSION_SECRET` is set — setting or rotating it
+  invalidates every existing session immediately.
+- **Fail closed.** With no `ADMIN_PASSWORD`, the login endpoint rejects every
+  attempt (and says so); an unset variable can never mean “empty password is
+  fine”. A password shorter than 12 characters is accepted but flagged.
+- **Three layers on every write:** the middleware gates `/admin` and
+  `/api/admin`, the route itself re-checks the session, and the form must carry a
+  CSRF token derived from that session. Cross-origin POSTs are rejected by an
+  Origin check.
+- **No caching, no indexing, no framing** for any admin response (`no-store`,
+  `X-Robots-Tag: noindex`, `X-Frame-Options: DENY`, `frame-ancestors 'none'`),
+  and `/admin` is disallowed in `robots.txt`.
+- **Login throttling:** 8 failures per IP per 10 minutes, with a 400 ms delay on
+  every failure. The counter is in memory, so on serverless it is per instance
+  rather than global.
+- **Revoking access:** change `ADMIN_PASSWORD`, or set/rotate
+  `ADMIN_SESSION_SECRET`.
+
+## Environment
+
+```
+DATABASE_URL="postgres://…"     # required — Neon connection string
+ADMIN_PASSWORD="…"              # required — the panel is off while this is unset
+ADMIN_SESSION_SECRET="…"        # optional — set it to revoke all sessions by rotation
+IMAGEKIT_PUBLIC_KEY="…"         # required for uploads from the panel
+IMAGEKIT_PRIVATE_KEY="…"        # signs each upload; never leaves the server
+IMAGEKIT_UPLOAD_ENDPOINT="…"    # optional — overrides ImageKit's upload URL
+RESEND_API_KEY="…"              # optional — without it, messages are only stored
+RESEND_EMAIL_FROM="…"           # optional — defaults to Resend's shared sender
+TURNSTILE_SECRET="…"            # optional — switches the contact CAPTCHA on
+TURNSTILE_SITE_KEY="…"          # with PUBLIC_TURNSTILE_SITE_KEY, renders the widget
+TURNSTILE_HOSTNAMES="…"         # optional — comma-separated hostnames to accept
+```
+
+Add them to the Vercel project's environment variables as well as your local
+`.env`. Locally, `.env.local` is loaded on top of `.env`, which is the safe place
+to override a value you would rather not edit in place.
+
+`ADMIN_PASSWORD` must never be renamed to `PUBLIC_ADMIN_PASSWORD`: `PUBLIC_*`
+values are inlined into the client bundle. The same goes for the ImageKit keys —
+the *public* key is meant to be seen, the private key is not.
+
+The ImageKit key only needs upload permission. Its media-management API is
+refused for a restricted key, which is why deleting a file (or the panel's own
+occasional test upload) happens in the ImageKit dashboard.
+
+## Checks, CI and deploys
 
 `npm run check` runs `astro check` and then verifies that the generated icons are
 still in step with the source. `vercel.json` puts that in front of the build, so
@@ -34,7 +239,7 @@ tested.
 `.github/workflows/checks.yml` runs the same commands plus a build on every push
 and pull request, which reports faster than waiting on the deploy.
 
-### Icons
+## Icons
 
 Icons are inlined into the page instead of loaded from a CDN: `Icon.astro` and
 `Icon.tsx` render the SVG out of `src/lib/icons.generated.ts`, so an icon is part
@@ -50,96 +255,19 @@ npm run icons
 
 The generator scans `src/` for icon names — `<Icon name="…" />`, literals inside
 a `name={…}` expression, and the `icon:` keys in the nav arrays — and fails
-loudly on a name that is not a real ionicon. `npm run check` fails when the two
-disagree, so adding an icon and forgetting to regenerate is a failed deploy
-rather than an icon that quietly renders as nothing. It reads the SVG from the
-`ionicons` package when installed, otherwise from unpkg, so regenerating on a
-fresh checkout wants a network connection; the committed file is what builds.
+loudly on a name that is not a real ionicon. It also reports icons that are
+generated but no longer used, which is a hint to regenerate after deleting a
+section from the panel. `npm run check` fails when the two disagree, so adding an
+icon and forgetting to regenerate is a failed deploy rather than an icon that
+quietly renders as nothing. It reads the SVG from the `ionicons` package when
+installed, otherwise from unpkg, so regenerating on a fresh checkout wants a
+network connection; the committed file is what builds.
 
-## Admin panel
+## Tools
 
-Everything published on the site is edited at **`/admin`** — sign in with the
-password in `ADMIN_PASSWORD`.
-
-| Section | What it edits |
-| --- | --- |
-| `/admin/posts` | Issues (title, slug, date, excerpt, PDF URL, cover, HTML content) |
-| `/admin/extras` | Extras — stories, poetry, illustrations |
-| `/admin/puzzles` | Crosswords, find-a-words and unscrambles |
-| `/admin/pages` | The About, FAQ and Join page bodies |
-| `/admin/settings` | Site title, description, footer and social preview |
-| `/admin/messages` | Contact form submissions, with read/unread and delete |
-| `/admin/contacts` | Who contact messages are emailed to, plus a test send |
-
-Each message also records where it was sent from: the address the form was posted
-from is resolved to a city and country as the message is stored, so the panel says
-where a message came from rather than where it happens to be read. A message whose
-address could not be placed shows its time alone — as do the rows written before
-the column existed.
-
-### Environment
-
-```
-ADMIN_PASSWORD="…"          # required — the panel is off while this is unset
-ADMIN_SESSION_SECRET="…"    # optional — set it to revoke all sessions by rotation
-IMAGEKIT_PUBLIC_KEY="…"     # required for uploads from the panel
-IMAGEKIT_PRIVATE_KEY="…"    # signs each upload; never leaves the server
-```
-
-Add them to the Vercel project's environment variables as well as your local
-`.env`. `ADMIN_PASSWORD` must never be renamed to `PUBLIC_ADMIN_PASSWORD`:
-`PUBLIC_*` values are inlined into the client bundle.
-
-The ImageKit key only needs upload permission. Its media-management API is
-refused for a restricted key, which is why deleting a file (or the panel's own
-occasional test upload) happens in the ImageKit dashboard.
-
-### Uploading covers and PDFs
-
-Covers and issue PDFs are stored on ImageKit, and the panel uploads them for you:
-choosing a file gets a short-lived signature from `/api/admin/upload-auth` and
-sends it straight to ImageKit from the browser. Nothing large passes through the
-app, which is what makes 9 MB issue PDFs possible — a Vercel function only
-accepts a 4.5 MB request body.
-
-Images get a crop step first. Covers are shown edge to edge at a fixed ratio, so
-pick a ratio (Cover 2:1 matches the site), drag the picture to choose which part
-to keep, zoom if you need to, then upload. The crop is rendered from the original
-file at full resolution, not from the on-screen preview. Uploaded files are
-placed at `bulletin/` for images and `bulletin/pdfs/` for PDFs, and each upload
-gets a fresh name — re-uploading over an existing name leaves ImageKit's CDN
-serving the old bytes.
-
-`rename-media.mjs` still tidies names in bulk, and
-`node tools/trim-cover-borders.mjs <slug>` removes the even border a cover that
-was photographed against a light backdrop leaves behind (add `--write` to upload
-and repoint the row, `--index` to survey every cover).
-
-### Puzzles
-
-Puzzles are typed in with fields rather than in the stored format: one row per
-answer with its grid position, direction and clue for a crossword; a grid plus a
-word list for a find-a-word; scrambled/answer pairs for an unscramble. The panel
-generates the compact text the public components parse, and a “raw data” view
-stays available for fixing anything by hand. A puzzle can be attached to the
-issue it appeared in, and those puzzles are then listed at the foot of that
-issue's page.
-
-### Security model
-
-- **One shared password**, compared in constant time, exchanged for a signed
-  (HMAC-SHA256) session cookie: `HttpOnly`, `SameSite=Strict`, `Secure` on https,
-  12-hour expiry with sliding renewal.
-- **Fail closed.** With no `ADMIN_PASSWORD`, the login endpoint rejects every
-  attempt and says so. An unset variable can never mean "empty password is fine".
-- **Three layers on every write:** middleware gates `/admin` and `/api/admin`,
-  the route itself re-checks the session, and the form must carry a CSRF token
-  derived from that session. Cross-origin POSTs are rejected by an Origin check.
-- **No caching, no indexing, no framing** for any admin response
-  (`no-store`, `X-Robots-Tag: noindex`, `X-Frame-Options: DENY`, plus
-  `frame-ancestors 'none'`), and `/admin` is disallowed in `robots.txt`.
-- **Login throttling:** 8 failures per IP per 10 minutes, with a 400 ms delay on
-  each failure. The counter is in memory, so on serverless it is per instance
-  rather than global.
-- **Revoking access:** change `ADMIN_PASSWORD`, or set/rotate
-  `ADMIN_SESSION_SECRET` to invalidate every existing session immediately.
+- `scripts/sync-pdfjs-assets.mjs` — copies pdf.js's assets into `public/pdfjs`
+  (runs on `npm install` and before the build).
+- `scripts/sync-icons.mjs` — the icon generator above.
+- `tools/trim-cover-borders.mjs <slug>` — removes the even border a cover that was
+  photographed against a light backdrop leaves behind. Add `--write` to upload
+  the result and repoint the row, `--index` to survey every cover.

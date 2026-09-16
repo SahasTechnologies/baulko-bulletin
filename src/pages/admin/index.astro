@@ -24,14 +24,12 @@ try {
 
 const configured = adminConfigured();
 const weakPassword = configured && adminPassword().length < 12;
-const dedicatedSecret = Boolean(process.env.ADMIN_SESSION_SECRET);
 
 const cards = [
   {
     href: "/admin/posts",
     label: "Issues",
     value: counts?.posts ?? 0,
-    note: "Latest issue + Previous Issues on the home page",
     action: "New issue",
     icon: "newspaper",
   },
@@ -39,7 +37,6 @@ const cards = [
     href: "/admin/extras",
     label: "Extras",
     value: counts?.extras ?? 0,
-    note: "Stories and illustrations outside a numbered issue",
     action: "New extra",
     icon: "color-wand",
   },
@@ -47,7 +44,6 @@ const cards = [
     href: "/admin/puzzles",
     label: "Puzzles",
     value: counts?.puzzles ?? 0,
-    note: "Crosswords, find-a-words and unscrambles",
     action: "New puzzle",
     icon: "extension-puzzle",
   },
@@ -82,10 +78,7 @@ const cards = [
     </div>
   )}
 
-  <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">Dashboard</h1>
-  <p class="mb-10 text-lg opacity-70">
-    Everything published on the public site comes from here.
-  </p>
+  <h1 class="mb-10 text-5xl font-bold leading-tight tracking-tighter">Dashboard</h1>
 
   <div class="mb-12 grid gap-6 md:grid-cols-3">
     {
@@ -96,8 +89,7 @@ const cards = [
             {card.label}
           </div>
           <div class="text-5xl font-black tracking-tighter">{card.value}</div>
-          <p class="mt-2 grow text-sm opacity-60">{card.note}</p>
-          <div class="mt-5 flex items-center gap-4">
+          <div class="mt-5 grow flex items-center gap-4">
             <a href={card.href} class="underline underline-offset-4">Manage</a>
             <a href={`${card.href}/new`} class="opacity-70 hover:opacity-100">+ {card.action}</a>
           </div>
@@ -138,30 +130,4 @@ const cards = [
       <span class="text-3xl font-black tracking-tighter">{authors}<span class="ml-2 text-sm font-medium opacity-60">authors</span></span>
     </a>
   </div>
-
-  <section class="mt-14 rounded-2xl border border-black/10 p-6 text-sm dark:border-white/15">
-    <h2 class="mb-4 text-lg font-semibold">Security</h2>
-    <ul class="space-y-2 opacity-80">
-      <li>
-        <Icon name={dedicatedSecret ? "checkmark-circle" : "information-circle"} />
-        Session signing key:
-        {dedicatedSecret
-          ? "ADMIN_SESSION_SECRET is set."
-          : "derived from ADMIN_PASSWORD — set ADMIN_SESSION_SECRET to rotate sessions independently."}
-      </li>
-      <li>
-        <Icon name="shield-checkmark" />
-        Sessions are HttpOnly, SameSite=Strict cookies, valid for 12 hours and renewed while you work.
-      </li>
-      <li>
-        <Icon name="finger-print" />
-        Writes need the session cookie plus a per-session CSRF token; cross-origin submits are
-        rejected.
-      </li>
-      <li>
-        <Icon name="hourglass" />
-        Logins are rate limited per IP (8 failures per 10 minutes) with a delay on every failure.
-      </li>
-    </ul>
-  </section>
 </AdminLayout>

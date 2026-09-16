@@ -16,6 +16,12 @@
  *
  * The result is written into a hidden input carrying the field's name, so the
  * surrounding Astro form still submits a plain URL as it always did.
+ *
+ * `mode="insert"` reuses all of that for body copy: there is no field to fill,
+ * so the finished picture is written into the HTML textarea with `targetId` at
+ * the cursor as a `<figure>`. That is what lets an illustrated issue be written
+ * top to bottom in the panel — before it, the only way to get a picture into
+ * body copy was to upload it somewhere else and paste a URL by hand.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -71,22 +77,55 @@ function fileNameFor(original: string, extension: string): string {
   return `${stem}-${randomSuffix()}.${extension}`;
 }
 
+/** Escapes the two characters that would end an attribute value early. */
+function escapeAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Escapes text that lands between tags (the caption). */
+function escapeText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * The markup an “insert” upload drops into the body. The caption is dropped
+ * rather than left empty, so an uncaptioned picture is not followed by a gap.
+ */
+function figureMarkup(url: string, alt: string, caption: string): string {
+  const lines = ["<figure>", `  <img src="${escapeAttribute(url)}" alt="${escapeAttribute(alt)}">`];
+  const trimmed = caption.trim();
+  if (trimmed) lines.push(`  <figcaption>${escapeText(trimmed)}</figcaption>`);
+  lines.push("</figure>", "");
+  return lines.join("\n");
+}
+
 export default function MediaField({
   name,
   initial,
   kind,
   fieldId,
   required = false,
+  mode = "field",
+  targetId,
 }: {
   name: string;
   initial: string;
   kind: Kind;
   fieldId: string;
   required?: boolean;
+  /** `insert` writes finished pictures into `targetId` instead of into a field. */
+  mode?: "field" | "insert";
+  /** Id of the textarea the inserted markup goes into. */
+  targetId?: string;
 }) {
+  const insert = mode === "insert";
   const [url, setUrl] = useState(initial);
   const [source, setSource] = useState<{ file: File; objectUrl: string; width: number; height: number } | null>(null);
-  const [ratio, setRatio] = useState<number | null>(kind === "image" ? 2 : null);
+  const [caption, setCaption] = useState("");
+  const [alt, setAlt] = useState("");
+  // A field is a cover, and covers are 2:1; a picture in the middle of a story is
+  // whatever shape it was drawn in, so insert mode starts on the original.
+  const [ratio, setRatio] = useState<number | null>(kind === "image" && !insert ? 2 : null);
   const [zoom, setZoom] = useState(1);
   const [focus, setFocus] = useState({ x: 0.5, y: 0.5 });
   const [frameWidth, setFrameWidth] = useState(0);
@@ -218,15 +257,33 @@ export default function MediaField({
     });
   }
 
+  /** Writes the markup into the body at the cursor, ready to keep typing after. */
+  function insertFigure(uploaded: string) {
+    const target = (targetId ? document.getElementById(targetId) : null) as HTMLTextAreaElement | null;
+    if (!target || typeof target.setRangeText !== "function") {
+      setError("Could not find the body text to insert into.");
+      return;
+    }
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? start;
+    target.focus();
+    target.setRangeText(figureMarkup(uploaded, alt, caption), start, end, "end");
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    setCaption("");
+    setAlt("");
+  }
+
   async function upload(blob: Blob, fileName: string, kindForUpload: Kind) {
     setBusy(true);
     setProgress(0);
     setError("");
     try {
       const config = await auth(kindForUpload);
-      setUrl(await send(config, new File([blob], fileName, { type: blob.type }), fileName));
+      const uploaded = await send(config, new File([blob], fileName, { type: blob.type }), fileName);
+      setUrl(uploaded);
       setSource(null);
       setDone(true);
+      if (insert) insertFigure(uploaded);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -311,7 +368,7 @@ export default function MediaField({
 
   return (
     <div className="flex flex-col gap-3">
-      <input type="hidden" name={name} value={url} />
+      {!insert && <input type="hidden" name={name} value={url} />}
       <input
         ref={inputRef}
         id={fieldId}
@@ -331,7 +388,7 @@ export default function MediaField({
         }}
       />
 
-      {/* What is currently saved */}
+      {/* What is currently saved, or the button that starts an upload */}
       <div className="flex flex-wrap items-center gap-4">
         {kind === "image" && url ? (
           <img
@@ -342,9 +399,17 @@ export default function MediaField({
         ) : null}
         <button type="button" className={buttonClass} onClick={() => inputRef.current?.click()} disabled={busy}>
           <Icon name={kind === "pdf" ? "document-attach-outline" : "image-outline"} />
-          {url ? (kind === "pdf" ? "Replace PDF" : "Choose another image") : kind === "pdf" ? "Upload PDF" : "Upload image"}
+          {insert
+            ? "Add a picture to the text"
+            : url
+              ? kind === "pdf"
+                ? "Replace PDF"
+                : "Choose another image"
+              : kind === "pdf"
+                ? "Upload PDF"
+                : "Upload image"}
         </button>
-        {url ? (
+        {url && !insert ? (
           <button
             type="button"
             className="text-sm text-red-700 underline underline-offset-4 dark:text-red-400"
@@ -358,7 +423,14 @@ export default function MediaField({
         ) : null}
       </div>
 
-      {url && (
+      {insert && (
+        <p className="text-sm opacity-60">
+          Uploaded pictures are added to the body text below, where the cursor was — crop, caption,
+          then keep writing.
+        </p>
+      )}
+
+      {url && !insert && (
         <a
           href={url}
           target="_blank"
@@ -376,7 +448,7 @@ export default function MediaField({
       )}
       {done && !busy && !source && (
         <p className="text-sm text-emerald-700 dark:text-emerald-400" role="status">
-          Uploaded.
+          {insert ? "Uploaded and added to the body text." : "Uploaded."}
         </p>
       )}
       {error && (
@@ -389,8 +461,37 @@ export default function MediaField({
       {kind === "image" && source && (
         <div className="rounded-2xl border border-black/15 p-4 dark:border-white/15">
           <p className="mb-3 text-sm font-medium">
-            Crop the picture — drag to choose which part to keep, then upload.
+            {insert
+              ? "Crop the picture — drag to choose which part to keep, then add it to the text."
+              : "Crop the picture — drag to choose which part to keep, then upload."}
           </p>
+
+          {insert && (
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col text-sm">
+                <span className="mb-1 font-medium">Caption (optional)</span>
+                <input
+                  type="text"
+                  value={caption}
+                  maxLength={300}
+                  onChange={(event) => setCaption(event.target.value)}
+                  placeholder="Year 11 art class, Term 2"
+                  className="rounded-xl border border-black/15 bg-white px-3 py-2 dark:border-white/15 dark:bg-neutral-900"
+                />
+              </label>
+              <label className="flex flex-col text-sm">
+                <span className="mb-1 font-medium">Alt text (optional)</span>
+                <input
+                  type="text"
+                  value={alt}
+                  maxLength={300}
+                  onChange={(event) => setAlt(event.target.value)}
+                  placeholder="Describes the picture for screen readers"
+                  className="rounded-xl border border-black/15 bg-white px-3 py-2 dark:border-white/15 dark:bg-neutral-900"
+                />
+              </label>
+            </div>
+          )}
 
           <div className="mb-3 flex flex-wrap gap-2">
             {RATIOS.map((option) => (
@@ -463,7 +564,7 @@ export default function MediaField({
           <div className="mt-4 flex flex-wrap items-center gap-4">
             <button type="button" className={primaryButtonClass} onClick={uploadCrop} disabled={busy}>
               <Icon name="cloud-upload-outline" />
-              Crop and upload
+              {insert ? "Crop and add to the text" : "Crop and upload"}
             </button>
             <button
               type="button"
