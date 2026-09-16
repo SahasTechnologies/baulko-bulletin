@@ -124,6 +124,13 @@ button:not(:disabled):active {
   flex: none;
 }
 
+/* A label opening makes the row wider, so a nav sized by its own content will
+   hand that extra width on to whatever contains it. Where that container also
+   holds text — the home page hero, whose column sits beside the title — the
+   text re-wraps as you hover. The fix belongs at the container: a column with a
+   width of its own cannot be resized by what is inside it. The page headers are
+   already safe, since there the nav is only pushed against a gap. */
+
 /* Phones: shrink the row a touch, otherwise the widest label ("Dashboard" in
    the admin nav, "Contact" on the public one) opening beside the current
    page's already-open label would push past a 375px-wide screen. */
