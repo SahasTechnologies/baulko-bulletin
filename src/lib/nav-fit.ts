@@ -32,6 +32,9 @@ const SPELLED = "nav-spelled";
 /** Opens every label for one frame, so the cells can be measured. */
 const MEASURING = "nav-measuring";
 
+/** Spare room a rower shape needs before the tighter one takes over, in px. */
+const SLACK = 24;
+
 /** One link's cell: what it takes closed, and what its label adds. */
 interface Cell {
   /** Width with the label collapsed. */
@@ -43,6 +46,13 @@ interface Cell {
 }
 
 let pointer: MediaQueryList | null = null;
+
+/** One nav's measurements, taken in one pass so the classes can be put back. */
+interface Plan {
+  nav: HTMLElement;
+  gap: number;
+  lines: Cell[][];
+}
 
 function navs(): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>(".icon-nav"));
@@ -139,21 +149,41 @@ export function updateNavFit(): void {
   }
 
   // Cleared before measuring, so the widths and the gap read are the ones the
-  // icon shapes use — not whatever shape the nav happens to be in.
+  // icon shapes use — not whatever shape the nav happens to be in. The labels
+  // are put back even if a measurement throws: the class holds every label on
+  // the page open, and leaving it on would leave the nav laid out wide and
+  // empty in the middle of a drag.
   root.classList.remove(TWO_ROWS, SPELLED);
   root.classList.add(MEASURING);
-  const plans = rows.map((nav) => ({
-    nav,
-    gap: Number.parseFloat(getComputedStyle(nav).columnGap) || 0,
-    lines: linesOf(nav, cellsOf(nav)),
-  }));
-  root.classList.remove(MEASURING);
+  let plans: Plan[];
+  try {
+    plans = rows.map((nav) => ({
+      nav,
+      gap: Number.parseFloat(getComputedStyle(nav).columnGap) || 0,
+      lines: linesOf(nav, cellsOf(nav)),
+    }));
+  } finally {
+    root.classList.remove(MEASURING);
+  }
+
+  // A rower shape is given up only when the tighter one has this much room to
+  // spare. Without it, a window dragged along the threshold would flip the nav
+  // between one line and two on consecutive frames, which reads as the page
+  // coming apart.
+  const previous = root.classList.contains(SPELLED)
+    ? "spelled"
+    : root.classList.contains(TWO_ROWS)
+      ? "two"
+      : "one";
 
   let twoRows = false;
   for (const plan of plans) {
     const room = roomFor(plan.nav);
-    if (holds(plan.lines.flat(), plan.gap, room)) continue;
-    if (plan.lines.length > 1 && plan.lines.every((line) => holds(line, plan.gap, room))) {
+    const oneRoom = previous === "one" ? room : room - SLACK;
+    const twoRoom = previous === "spelled" ? room - SLACK : room;
+
+    if (holds(plan.lines.flat(), plan.gap, oneRoom)) continue;
+    if (plan.lines.length > 1 && plan.lines.every((line) => holds(line, plan.gap, twoRoom))) {
       twoRows = true;
       continue;
     }

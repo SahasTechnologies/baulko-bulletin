@@ -109,6 +109,18 @@ let run = 0;
  */
 function ease(group: Group, before: Positions, after: Positions): void {
   const items = group.elements();
+  const generation = ++run;
+
+  // Every element of the row is cleared first, not just the ones about to move.
+  // A run that is interrupted — drag a window across a line, then back — leaves
+  // offsets behind on the elements it moved, and one of those that happens to be
+  // in the same place this time would never be cleared again: it would keep the
+  // old offset until the page was reloaded.
+  for (const item of items) {
+    item.style.transition = "none";
+    item.style.transform = "";
+  }
+
   const moved: HTMLElement[] = [];
 
   after.forEach((rect, index) => {
@@ -119,19 +131,17 @@ function ease(group: Group, before: Positions, after: Positions): void {
     const dy = from.top - rect.top;
     // Under a pixel is the same place as far as anyone can see.
     if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-    item.style.transition = "none";
     item.style.transform = `translate(${dx}px, ${dy}px)`;
     moved.push(item);
   });
 
   if (!moved.length) {
     // Nothing to animate — but the labels were muted for the measurement, and
-    // leaving the class on would keep them muted for good.
-    document.documentElement.classList.remove(RUNNING);
+    // leaving the class on would keep them muted for good. Only while this run
+    // is still the current one: a newer run owns that class.
+    if (generation === run) document.documentElement.classList.remove(RUNNING);
     return;
   }
-
-  const generation = ++run;
 
   // Take the offset as the starting point before the browser paints it.
   void document.documentElement.offsetHeight;
@@ -146,7 +156,8 @@ function ease(group: Group, before: Positions, after: Positions): void {
 
   window.setTimeout(() => {
     if (generation !== run) return;
-    for (const item of moved) {
+    // The whole row again, so nothing a previous run touched is left behind.
+    for (const item of items) {
       item.style.transition = "";
       item.style.transform = "";
     }
