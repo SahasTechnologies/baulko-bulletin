@@ -1,8 +1,10 @@
 ---
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import ContentForm from "@/components/admin/ContentForm.astro";
+import Flash from "@/components/admin/Flash.astro";
 import { ENTITIES, isEntityKey } from "@/lib/admin-entities";
 import { listAuthorNames, listIssueOptions } from "@/lib/admin-db";
+import { flashFromUrl } from "@/lib/admin";
 
 export const prerender = false;
 
@@ -15,6 +17,12 @@ const def = ENTITIES[entity];
 const base = `/admin/${def.key}`;
 const csrf = Astro.locals.adminCsrf;
 
+// A rejected create lands back here, so this page has to show why. Without it
+// the server's own check — the puzzle-data one in particular — was silent: the
+// editor got an empty form and no message, which reads as the save having
+// vanished rather than been refused.
+const flash = flashFromUrl(Astro.url);
+
 // Existing author names power the datalist, so a name isn't retyped (and
 // duplicated in the authors table) on every save.
 const authorNames = def.fields.some((field) => field.name === "author_name")
@@ -26,6 +34,8 @@ const issues = def.fields.some((field) => field.name === "post_id")
 ---
 
 <AdminLayout title={`New ${def.singular}`} current={base}>
+  {flash && <Flash kind={flash.kind} message={flash.message} />}
+
   <h1 class="mb-10 text-5xl font-bold leading-tight tracking-tighter">New {def.singular.toLowerCase()}</h1>
 
   <div class="max-w-4xl">

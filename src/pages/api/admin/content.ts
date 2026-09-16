@@ -54,8 +54,10 @@ export const POST: APIRoute = async ({ request }) => {
 
   // Where a failed write sends the editor back to. Values are re-read from the
   // database there, so a rejected save loses in-progress edits — acceptable for
-  // a one-operator tool, where the browser's own required/maxlength checks catch
-  // almost everything before it reaches here.
+  // a one-operator tool, where the browser's own required/maxlength checks and
+  // the puzzle editor's live validation catch almost everything before it
+  // reaches here. The page it lands on renders the message, so a refusal that
+  // does get this far is at least explained.
   const returnTo = editing ? `${base}/${id}` : action === "delete" ? base : `${base}/new`;
 
   try {

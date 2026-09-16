@@ -128,7 +128,17 @@ function carriedBy(inner: Group, outer: Group, before: Positions, after: Positio
   const to = index < 0 ? undefined : after[index];
   if (!from || !to) return { dx: 0, dy: 0 };
 
-  return { dx: from.left - to.left, dy: from.top - to.top };
+  const dx = from.left - to.left;
+  const dy = from.top - to.top;
+
+  // Only a container that is itself being eased carries the row inside it.
+  // `ease` leaves anything under MIN_MOVE exactly where the layout put it, and
+  // subtracting a move that never happens would leave the inner cells short of
+  // their place by the same amount — a small, permanent offset, which is what
+  // this whole file exists to avoid.
+  if (Math.hypot(dx, dy) < MIN_MOVE) return { dx: 0, dy: 0 };
+
+  return { dx, dy };
 }
 
 /** Where every element of one row sits right now, in DOM order. */
@@ -137,31 +147,72 @@ function measure(group: Group): Positions {
 }
 
 /**
+ * Drops any inline transition or offset a row is still carrying, so the next
+ * measurement reads the layout rather than an animation halfway through it.
+ * Nothing paints between this and the new offsets being applied — both happen
+ * in the same task — so clearing a row that is still moving is invisible.
+ */
+function clear(group: Group): void {
+  for (const item of group.elements()) {
+    item.style.transition = "none";
+    item.style.transform = "";
+  }
+}
+
+/**
+ * Hands a row back to the stylesheet once the motion is over: the offsets are
+ * gone and the inline `transition: none` the clearing pass left behind goes
+ * with them, so nothing here outlives the flip.
+ */
+function settle(group: Group): void {
+  for (const item of group.elements()) {
+    item.style.transition = "";
+    item.style.transform = "";
+  }
+}
+
+/**
  * The flip currently being animated, so a stale cleanup timer cannot clear the
  * styles of a newer one — dragging a window across a line and back is enough to
  * overlap two runs.
+ *
+ * It counts *crossings*, not rows. Bumping it inside `ease` instead would make
+ * the second row of a crossing cancel the first: the nav sits inside the home
+ * page's hero row, so crossing the laptop breakpoint changes both shapes in the
+ * same frame, and the nav's own animation was being superseded by the hero's
+ * before it ever started — leaving every icon parked at its starting offset
+ * with `transition: none` and nothing left to bring it home.
  */
 let run = 0;
+
+/** Whether the last crossing is still easing. Read by the snapshot, which must never be taken mid-flight. */
+let inFlight = false;
 
 /**
  * Elements are moved with a transform rather than by animating the layout: a
  * flex row cannot tween between two arrangements, but offsetting each item and
  * easing the offset back to zero looks the same and costs one composited layer
  * per element.
+ *
+ * `generation` belongs to the crossing that asked for this, so every row of one
+ * crossing animates and only a newer crossing supersedes them. Returns whether
+ * anything was worth animating.
  */
-function ease(group: Group, before: Positions, after: Positions, carried: Offset = { dx: 0, dy: 0 }): void {
+function ease(
+  group: Group,
+  before: Positions,
+  after: Positions,
+  generation: number,
+  carried: Offset = { dx: 0, dy: 0 }
+): boolean {
   const items = group.elements();
-  const generation = ++run;
 
   // Every element of the row is cleared first, not just the ones about to move.
   // A run that is interrupted — drag a window across a line, then back — leaves
   // offsets behind on the elements it moved, and one of those that happens to be
   // in the same place this time would never be cleared again: it would keep the
   // old offset until the page was reloaded.
-  for (const item of items) {
-    item.style.transition = "none";
-    item.style.transform = "";
-  }
+  clear(group);
 
   const moved: HTMLElement[] = [];
 
@@ -178,17 +229,7 @@ function ease(group: Group, before: Positions, after: Positions, carried: Offset
     moved.push(item);
   });
 
-  if (!moved.length) {
-    // Nothing worth animating — but the labels were muted for the measurement,
-    // and leaving the class on would keep them muted for good. The inline
-    // `transition: none` goes with it. Only while this run is still the current
-    // one: a newer run owns that class.
-    if (generation === run) {
-      for (const item of items) item.style.transition = "";
-      document.documentElement.classList.remove(RUNNING);
-    }
-    return;
-  }
+  if (!moved.length) return false;
 
   // Take the offset as the starting point before the browser paints it.
   void document.documentElement.offsetHeight;
@@ -201,15 +242,7 @@ function ease(group: Group, before: Positions, after: Positions, carried: Offset
     }
   });
 
-  window.setTimeout(() => {
-    if (generation !== run) return;
-    // The whole row again, so nothing a previous run touched is left behind.
-    for (const item of items) {
-      item.style.transition = "";
-      item.style.transform = "";
-    }
-    document.documentElement.classList.remove(RUNNING);
-  }, DURATION + 80);
+  return true;
 }
 
 /**
@@ -243,23 +276,35 @@ export function initLayoutTransition(): void {
       const crossed = now.map((next, index) => next !== shape[index]);
       if (!crossed.some(Boolean)) {
         // An ordinary resize: no row changed shape, so there is nothing to
-        // animate — just keep the record of where things are up to date.
-        snapshot = GROUPS.map(measure);
+        // animate — just keep the record of where things are up to date. Not
+        // while a flip is still running, though: the rects would be of the
+        // animation rather than of the layout, and `carried` is read off them.
+        if (!inFlight) snapshot = GROUPS.map(measure);
         return;
       }
       shape = now;
 
       // Muting the labels before measuring matters. Their own transition would
       // still be halfway through the previous shape, so the positions measured
-      // here would be a moving target. Every row is measured before any of the
-      // offsets are applied, so one flip is never measured through another's
-      // transform.
+      // here would be a moving target.
       document.documentElement.classList.add(RUNNING);
+
+      // A crossing can arrive while the previous one is still easing. Clearing
+      // first means `after` is the new layout and not the old animation, which
+      // is what `carried` is derived from — an offset computed against a
+      // half-eased container would be wrong by exactly that much, and stay
+      // wrong once the motion stopped. Every row is measured before any of the
+      // new offsets are applied, so one flip is never measured through
+      // another's transform.
+      for (const group of GROUPS) clear(group);
       const after = GROUPS.map(measure);
 
-      if (reduced) {
-        document.documentElement.classList.remove(RUNNING);
-      } else {
+      // One generation for the whole crossing: every row that changed shape in
+      // this frame has to ease, and only a newer crossing may supersede them.
+      const generation = ++run;
+
+      let moving = false;
+      if (!reduced) {
         // Only the rows that crossed are eased. A row that sits inside another
         // crossed row is eased by what it did *within* that row, since the
         // container's own transform is already carrying it — see `carriedBy`.
@@ -271,8 +316,34 @@ export function initLayoutTransition(): void {
             if (carried.dx || carried.dy) return;
             carried = carriedBy(group, other, snapshot[j] ?? [], after[j] ?? []);
           });
-          ease(group, snapshot[index] ?? [], after[index], carried);
+          if (ease(group, snapshot[index] ?? [], after[index], generation, carried)) {
+            moving = true;
+          }
         });
+      }
+
+      if (moving) {
+        inFlight = true;
+        // One cleanup for the whole crossing, after the longest of the rows has
+        // eased: every row is handed back to the stylesheet, and the snapshot is
+        // re-taken then, because a measurement taken while a row is still moving
+        // is a measurement of the animation.
+        window.setTimeout(() => {
+          if (generation !== run) return;
+          for (const group of GROUPS) settle(group);
+          document.documentElement.classList.remove(RUNNING);
+          inFlight = false;
+          snapshot = GROUPS.map(measure);
+        }, DURATION + 80);
+      } else {
+        // Nothing worth animating — but the labels were muted for the
+        // measurement and every row was cleared for it, and leaving either in
+        // place would keep the labels muted for good. A previous crossing's
+        // cleanup timer is no longer the current one, so this is also where
+        // `inFlight` gets cleared for that case.
+        for (const group of GROUPS) settle(group);
+        document.documentElement.classList.remove(RUNNING);
+        inFlight = false;
       }
 
       snapshot = after;
