@@ -44,3 +44,11 @@ const isActive = (href: string) =>
     <ThemeToggle client:load />
   </div>
 </nav>
+
+{/* Eases the row between its condensed and expanded shapes when the width
+    crosses the breakpoint, instead of swapping one for the other. */}
+<script>
+  import { initNavTransition } from "@/lib/nav-flip";
+
+  initNavTransition();
+</script>

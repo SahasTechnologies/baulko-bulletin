@@ -86,10 +86,15 @@ const ogImageUrl = (() => {
                   Contact Us
                 </a>
                 <div class="flex flex-col items-center lg:items-end text-sm opacity-50 gap-1 pt-1">
-                  <p class="flex flex-wrap items-center justify-center gap-x-2 lg:justify-end">
-                    <span>Website by</span>
-                    <a href="https://candra.dev" class="hover:underline">Darren Candra</a>
-                    <span aria-hidden="true">&amp;</span>
+                  {/* Plain text rather than a flex row: the row's gaps added a
+                      visible space on both sides of the ampersand, so the
+                      credit line has to set its own spacing. The `{" "}`
+                      expressions survive the whitespace compression that would
+                      otherwise join the words and the links together. */}
+                  <p class="text-center lg:text-right">
+                    Website by{" "}
+                    <a href="https://candra.dev" class="hover:underline">Darren Candra</a>{" "}
+                    &amp;{" "}
                     <a href="https://shimpi.dev" class="hover:underline">Sahas Shimpi</a>
                   </p>
                   <a href="https://github.com/circles-png" class="hover:underline">Puzzles by Matthew Li</a>

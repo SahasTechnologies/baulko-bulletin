@@ -58,11 +58,18 @@ const puzzles = await getPuzzlesForPost(post.id);
               ? "One puzzle was published alongside this issue."
               : `${puzzles.length} puzzles were published alongside this issue.`}
           </p>
-          <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {/* One row that scrolls sideways rather than a grid: an issue can
+              carry ten puzzles or one, and a scroller keeps the tiles the same
+              size either way — and keeps this section from pushing the rest of
+              the page down when there are a lot of them. */}
+          <div class="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4">
             {puzzles.map(({ puzzle, index }) => {
               const cover = croppedSquareUrl(puzzle.cover_image_url);
               return (
-                <a class="group transition" href={`/puzzles/${index}`}>
+                <a
+                  class="group w-44 shrink-0 snap-start transition sm:w-52 md:w-60"
+                  href={`/puzzles/${index}`}
+                >
                   <div class="relative flex aspect-square items-end justify-end overflow-hidden rounded-xl bg-slate-800 p-6 font-mono text-4xl font-black text-slate-200 shadow-md transition group-hover:scale-105 group-hover:shadow-2xl group-hover:shadow-white/40 dark:group-hover:shadow-white/10">
                     {cover && (
                       <img
