@@ -21,6 +21,36 @@ function hasModernPdfEngine() {
 }
 
 /**
+ * Set once the module below has been reloaded for. In a dev session the
+ * dependency hash changes when Vite re-bundles pdf.js, and a tab loaded before
+ * that holds URLs that no longer exist, so the framework answers them with a
+ * 504 and the dynamic import rejects. Nothing in the page can fix that — the
+ * current URL only comes with fresh HTML, so it reloads once, and remembers it
+ * did, so a module that is genuinely broken cannot put the page in a loop.
+ */
+const RELOADED_KEY = "pdfjs-reloaded";
+
+/** Whether this failure is a module that could not be fetched, rather than a bad
+ *  file or a document pdf.js refused. */
+function looksLikeStaleModule(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  return /dynamically imported module|module script failed|504|Outdated Optimize Dep/i.test(
+    message
+  );
+}
+
+function reloadForFreshModules(): boolean {
+  try {
+    if (sessionStorage.getItem(RELOADED_KEY)) return false;
+    sessionStorage.setItem(RELOADED_KEY, "1");
+  } catch {
+    // No storage (a locked-down browser): still reload, just without the guard.
+  }
+  window.location.reload();
+  return true;
+}
+
+/**
  * Load the pdf.js build this browser can run, pointed at the matching worker and
  * at the wasm decoders — all served from our own origin, copied into
  * public/pdfjs/<version>/ by scripts/sync-pdfjs-assets.mjs. That script is not
@@ -31,9 +61,22 @@ function hasModernPdfEngine() {
  */
 async function loadPdfjs() {
   const modern = hasModernPdfEngine();
-  const pdfjs = modern
-    ? await import("pdfjs-dist")
-    : await import("pdfjs-dist/legacy/build/pdf.mjs");
+  let pdfjs;
+  try {
+    pdfjs = modern
+      ? await import("pdfjs-dist")
+      : await import("pdfjs-dist/legacy/build/pdf.mjs");
+  } catch (err) {
+    if (looksLikeStaleModule(err) && reloadForFreshModules()) {
+      console.info("[pdf] the reader's code was out of date — reloading once to fetch it");
+    }
+    throw err;
+  }
+  try {
+    sessionStorage.removeItem(RELOADED_KEY);
+  } catch {
+    // Storage unavailable; the guard simply does not apply.
+  }
   if (!modern) {
     console.info(
       "[pdf] this browser lacks Uint8Array.prototype.toHex — using the legacy pdf.js build"
@@ -292,7 +335,14 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
       } catch (err) {
         console.error(err);
         if (!cancelled) {
-          setError("Could not open this issue.");
+          // A module that will not load is not the issue's fault, and the reader
+          // can do something about it, so it says so instead of blaming the
+          // file.
+          setError(
+            looksLikeStaleModule(err)
+              ? "The reader's code did not load."
+              : "Could not open this issue."
+          );
           setLoading(false);
         }
       }
@@ -656,6 +706,17 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     }
   }
 
+  /** Clears the once-only guard, so the reload below is allowed to have been
+   *  the first one — this is the reader asking for it by hand. */
+  function reloadPage() {
+    try {
+      sessionStorage.removeItem(RELOADED_KEY);
+    } catch {
+      // Nothing to clear.
+    }
+    window.location.reload();
+  }
+
   function fileName() {
     const fromTitle = (title || "").replace(/[:/\\?*"<>|]/g, " ").replace(/\s+/g, " ").trim();
     if (fromTitle) return `${fromTitle}.pdf`;
@@ -719,8 +780,26 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
         </div>
       )}
       {error && (
-        <div className="flex min-h-[40vh] items-center justify-center text-lg opacity-70">
-          {error}
+        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-5 text-center text-lg">
+          <p className="opacity-70">{error}</p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={reloadPage}
+              className="rounded-full bg-black px-5 py-2 font-semibold text-white transition hover:scale-105 dark:bg-white dark:text-black"
+            >
+              Reload the page
+            </button>
+            {/* Reading it is still possible without our reader. */}
+            <a
+              href={src}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-black/20 px-5 py-2 font-semibold transition hover:scale-105 dark:border-white/25"
+            >
+              Open the PDF
+            </a>
+          </div>
         </div>
       )}
 
