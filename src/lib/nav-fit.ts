@@ -157,6 +157,16 @@ export function updateNavFit(): void {
     return;
   }
 
+  // Read before the classes come off, since they are what it reports. Read
+  // after, it would always be the tightest shape and the slack below would
+  // never apply — which is how a window resting on the threshold could flip the
+  // nav on every pixel of a drag and re-animate the whole row each time.
+  const previous = root.classList.contains(SPELLED)
+    ? "spelled"
+    : root.classList.contains(TWO_ROWS)
+      ? "two"
+      : "one";
+
   // Cleared before measuring, so the widths and the gap read are the ones the
   // icon shapes use — not whatever shape the nav happens to be in. The labels
   // are put back even if a measurement throws: the class holds every label on
@@ -179,12 +189,6 @@ export function updateNavFit(): void {
   // spare. Without it, a window dragged along the threshold would flip the nav
   // between one line and two on consecutive frames, which reads as the page
   // coming apart.
-  const previous = root.classList.contains(SPELLED)
-    ? "spelled"
-    : root.classList.contains(TWO_ROWS)
-      ? "two"
-      : "one";
-
   let twoRows = false;
   for (const plan of plans) {
     const room = roomFor(plan.nav);

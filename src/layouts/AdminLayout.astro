@@ -2,6 +2,7 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Icon from "@/components/ui/Icon.astro";
 import Logo from "@/components/ui/Logo.astro";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 import { getSettings } from "@/lib/db";
 
 export const prerender = false;
@@ -47,6 +48,12 @@ const isActive = (href: string) =>
       </a>
 
       <div class="flex flex-wrap items-center gap-4">
+        {/* The panel's own theme switch. The site's is inside the public nav,
+            which the panel does not have, so the panel carries one: working in
+            here is as much a place to want the lights different. */}
+        <div class="inline-flex items-center rounded-full border border-black/15 px-4 py-1.5 dark:border-white/20">
+          <ThemeToggle client:load />
+        </div>
         <a
           href="/"
           class="inline-flex items-center gap-1.5 text-lg transition-transform hover:scale-105"

@@ -18,7 +18,7 @@ Markdown and no build step between typing in the panel and the page changing.
 | Neon Postgres | All content. Reached with `@neondatabase/serverless` over HTTP. |
 | ImageKit | Every image and issue PDF, plus the URL transforms that crop covers. |
 | Resend | Emails contact submissions to the addresses on the contact list. |
-| pdf.js | Reads issue PDFs in the browser (`scripts/sync-pdfjs-assets.mjs` copies it into `public/pdfjs` on install and build). |
+| pdf.js | Reads issue PDFs in the browser (`scripts/sync-pdfjs-assets.mjs` copies it into `public/pdfjs` on install and build). Both of its entry points are named in `astro.config.mjs`'s `optimizeDeps`, so a dev session never re-bundles it out from under a page that is already open — which used to fail the reader with a 504. |
 | Cloudflare Turnstile | Optional CAPTCHA on the contact form. |
 
 ## Development

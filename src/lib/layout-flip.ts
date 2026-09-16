@@ -70,6 +70,18 @@ const GROUPS: Group[] = [
 /** Long enough to read as a move, short enough not to be in the way. */
 const DURATION = 380;
 
+/**
+ * How far an element has to end up from where it started before the move is
+ * worth animating, in px.
+ *
+ * A shape change is not always a re-arrangement: the rows are measured at
+ * whatever width the window is, so a crossing can leave everything within a few
+ * pixels of where it was. Easing that is motion with nothing to show for it —
+ * and it is what made a window dragged along a threshold look like it was
+ * re-animating on every pixel. Below this the new position is simply taken.
+ */
+const MIN_MOVE = 8;
+
 /** The same overshoot the rest of the site's hover motion uses. */
 const EASING = "cubic-bezier(0.34, 1.56, 0.64, 1)";
 
@@ -87,6 +99,36 @@ let started = false;
 
 function select(selector: string): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>(selector));
+}
+
+/** How far something moved, as an offset back to where it was. */
+interface Offset {
+  dx: number;
+  dy: number;
+}
+
+/**
+ * How much of an inner row's movement is its own, rather than its container's.
+ *
+ * The nav lives inside the hero column, and both change shape at the same width.
+ * The nav's cells are measured where they are on the page, so their displacement
+ * already includes everything their container did — easing them by it would add
+ * the container's own offset on top and send them out past their new place
+ * before easing back. Easing them by the difference means the container's
+ * transform carries them across the page while their own offset animates the
+ * movement they made inside it, which together land exactly where they started.
+ */
+function carriedBy(inner: Group, outer: Group, before: Positions, after: Positions): Offset {
+  const first = inner.elements()[0];
+  if (!first) return { dx: 0, dy: 0 };
+
+  const containers = outer.elements();
+  const index = containers.findIndex((element) => element.contains(first));
+  const from = index < 0 ? undefined : before[index];
+  const to = index < 0 ? undefined : after[index];
+  if (!from || !to) return { dx: 0, dy: 0 };
+
+  return { dx: from.left - to.left, dy: from.top - to.top };
 }
 
 /** Where every element of one row sits right now, in DOM order. */
@@ -107,7 +149,7 @@ let run = 0;
  * easing the offset back to zero looks the same and costs one composited layer
  * per element.
  */
-function ease(group: Group, before: Positions, after: Positions): void {
+function ease(group: Group, before: Positions, after: Positions, carried: Offset = { dx: 0, dy: 0 }): void {
   const items = group.elements();
   const generation = ++run;
 
@@ -127,19 +169,24 @@ function ease(group: Group, before: Positions, after: Positions): void {
     const item = items[index];
     const from = before[index];
     if (!item || !from) return;
-    const dx = from.left - rect.left;
-    const dy = from.top - rect.top;
-    // Under a pixel is the same place as far as anyone can see.
-    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+    // Two spaces, not four: an interior row's own movement inside the box its
+    // container's transform is already carrying it in.
+    const dx = from.left - rect.left - carried.dx;
+    const dy = from.top - rect.top - carried.dy;
+    if (Math.hypot(dx, dy) < MIN_MOVE) return;
     item.style.transform = `translate(${dx}px, ${dy}px)`;
     moved.push(item);
   });
 
   if (!moved.length) {
-    // Nothing to animate — but the labels were muted for the measurement, and
-    // leaving the class on would keep them muted for good. Only while this run
-    // is still the current one: a newer run owns that class.
-    if (generation === run) document.documentElement.classList.remove(RUNNING);
+    // Nothing worth animating — but the labels were muted for the measurement,
+    // and leaving the class on would keep them muted for good. The inline
+    // `transition: none` goes with it. Only while this run is still the current
+    // one: a newer run owns that class.
+    if (generation === run) {
+      for (const item of items) item.style.transition = "";
+      document.documentElement.classList.remove(RUNNING);
+    }
     return;
   }
 
@@ -213,12 +260,18 @@ export function initLayoutTransition(): void {
       if (reduced) {
         document.documentElement.classList.remove(RUNNING);
       } else {
-        // Only the rows that crossed are eased. An element of another row that
-        // sits inside one of them — the nav lives inside both headers — is
-        // carried along by its parent's transform, so easing it separately would
-        // double its movement.
+        // Only the rows that crossed are eased. A row that sits inside another
+        // crossed row is eased by what it did *within* that row, since the
+        // container's own transform is already carrying it — see `carriedBy`.
         GROUPS.forEach((group, index) => {
-          if (crossed[index]) ease(group, snapshot[index] ?? [], after[index]);
+          if (!crossed[index]) return;
+          let carried: Offset = { dx: 0, dy: 0 };
+          GROUPS.forEach((other, j) => {
+            if (j === index || !crossed[j]) return;
+            if (carried.dx || carried.dy) return;
+            carried = carriedBy(group, other, snapshot[j] ?? [], after[j] ?? []);
+          });
+          ease(group, snapshot[index] ?? [], after[index], carried);
         });
       }
 
