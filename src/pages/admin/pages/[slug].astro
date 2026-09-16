@@ -1,10 +1,11 @@
 ---
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import Flash from "@/components/admin/Flash.astro";
+import HtmlField from "@/components/admin/HtmlField";
 import MediaField from "@/components/admin/MediaField";
 import Icon from "@/components/ui/Icon.astro";
 import { getPageRow } from "@/lib/admin-db";
-import { escapeHtml, flashFromUrl } from "@/lib/admin";
+import { flashFromUrl } from "@/lib/admin";
 
 export const prerender = false;
 
@@ -77,13 +78,13 @@ const inputClass =
 
     <div>
       <label for="body_html" class="mb-1 block text-sm font-medium">Body (HTML)</label>
-      <textarea
-        id="body_html"
+      <HtmlField
+        client:load
         name="body_html"
-        rows="22"
-        maxlength="200000"
-        class={`${inputClass} font-mono text-base`}
-        set:html={escapeHtml(page.body_html)}
+        fieldId="body_html"
+        initial={page.body_html}
+        rows={22}
+        maxLength={200000}
       />
       <div class="mt-3">
         <MediaField

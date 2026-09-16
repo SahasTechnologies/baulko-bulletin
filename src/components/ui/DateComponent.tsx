@@ -10,10 +10,16 @@ const formatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "Australia/Sydney",
 });
 
+/**
+ * The date as the site writes it, for the places that need the string rather
+ * than the element — the search matches against it, so typing "2025" finds the
+ * issues published that year.
+ */
+export function formatDate(dateString: string): string {
+  const date = new Date(dateString);
+  return Number.isNaN(date.getTime()) ? "" : formatter.format(date);
+}
+
 export default function DateComponent({ dateString }: { dateString: string }) {
-  return (
-    <time dateTime={dateString}>
-      {formatter.format(new Date(dateString))}
-    </time>
-  );
+  return <time dateTime={dateString}>{formatDate(dateString)}</time>;
 }

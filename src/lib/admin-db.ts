@@ -41,8 +41,11 @@ export function isUuid(value: string | undefined | null): value is string {
 
 /* ------------------------------------------------------------------ content */
 
-/** `puzzles` has no slug column, so slug handling is per-entity below. */
-const HAS_SLUG: Record<EntityKey, boolean> = { posts: true, extras: true, puzzles: false };
+/**
+ * Which entities are addressed by a slug. All three are: a puzzle used to be
+ * addressed by its position in a list, which every new puzzle renumbered.
+ */
+const HAS_SLUG: Record<EntityKey, boolean> = { posts: true, extras: true, puzzles: true };
 
 export async function listRows(key: EntityKey): Promise<ContentRow[]> {
   const sql = sqlClient();
@@ -65,8 +68,8 @@ export async function listRows(key: EntityKey): Promise<ContentRow[]> {
     return rows.map((row) => rowFrom(row as Record<string, unknown>));
   }
   const rows = await sql`
-    SELECT puzzles.id, puzzles.title, puzzles.type, puzzles.date, puzzles.cover_image_url,
-           puzzles.post_id, authors.name AS author_name
+    SELECT puzzles.id, puzzles.slug, puzzles.title, puzzles.type, puzzles.date,
+           puzzles.cover_image_url, puzzles.post_id, authors.name AS author_name
     FROM puzzles
     LEFT JOIN authors ON authors.id = puzzles.author_id
     ORDER BY puzzles.date DESC
@@ -140,15 +143,17 @@ export async function listAuthorNames(): Promise<string[]> {
 }
 
 /** Appends -2, -3 … until the slug is free, ignoring the row being edited. */
-export async function uniqueSlug(table: "posts" | "extras", base: string, excludeId: string | null): Promise<string> {
+export async function uniqueSlug(key: EntityKey, base: string, excludeId: string | null): Promise<string> {
   const sql = sqlClient();
   const exclude = isUuid(excludeId) ? excludeId : NO_UUID;
   for (let suffix = 1; suffix <= 50; suffix++) {
     const candidate = suffix === 1 ? base : `${base}-${suffix}`;
     const rows =
-      table === "posts"
+      key === "posts"
         ? await sql`SELECT 1 FROM posts WHERE slug = ${candidate} AND id <> ${exclude}::uuid LIMIT 1`
-        : await sql`SELECT 1 FROM extras WHERE slug = ${candidate} AND id <> ${exclude}::uuid LIMIT 1`;
+        : key === "extras"
+          ? await sql`SELECT 1 FROM extras WHERE slug = ${candidate} AND id <> ${exclude}::uuid LIMIT 1`
+          : await sql`SELECT 1 FROM puzzles WHERE slug = ${candidate} AND id <> ${exclude}::uuid LIMIT 1`;
     if (!rows[0]) return candidate;
   }
   return `${base}-${Date.now()}`;
@@ -225,24 +230,27 @@ export async function saveRow(
 
   const type = values.type;
   const data = values.data ?? "";
+  const slug = await uniqueSlug("puzzles", values.slug, id);
   const authorId = await resolveAuthorId(values.author_name ?? "");
   // A blank picker clears the link; Postgres is happy to take null through the cast.
   const postId = isUuid(values.post_id) ? values.post_id : null;
   if (id) {
     await sql`
       UPDATE puzzles SET
-        title = ${title}, type = ${type}, data = ${data}, cover_image_url = ${coverUrl},
-        date = ${date}::timestamptz, author_id = ${authorId}::uuid, post_id = ${postId}::uuid
+        title = ${title}, slug = ${slug}, type = ${type}, data = ${data},
+        cover_image_url = ${coverUrl}, date = ${date}::timestamptz,
+        author_id = ${authorId}::uuid, post_id = ${postId}::uuid
       WHERE id = ${id}::uuid
     `;
-    return { id, slug: null };
+    return { id, slug };
   }
   const created = await sql`
-    INSERT INTO puzzles (title, type, data, cover_image_url, date, author_id, post_id)
-    VALUES (${title}, ${type}, ${data}, ${coverUrl}, ${date}::timestamptz, ${authorId}::uuid, ${postId}::uuid)
+    INSERT INTO puzzles (title, slug, type, data, cover_image_url, date, author_id, post_id)
+    VALUES (${title}, ${slug}, ${type}, ${data}, ${coverUrl}, ${date}::timestamptz,
+            ${authorId}::uuid, ${postId}::uuid)
     RETURNING id
   `;
-  return { id: String((created[0] as { id: unknown }).id), slug: null };
+  return { id: String((created[0] as { id: unknown }).id), slug };
 }
 
 export async function deleteRow(key: EntityKey, id: string): Promise<boolean> {
@@ -257,7 +265,6 @@ export async function deleteRow(key: EntityKey, id: string): Promise<boolean> {
   return Boolean(rows[0]);
 }
 
-/** `puzzles` never had slug data, so entity-specific handling stays minimal. */
 export function entityUsesSlug(key: EntityKey): boolean {
   return HAS_SLUG[key];
 }

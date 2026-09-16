@@ -45,10 +45,10 @@ const isActive = (href: string) =>
   </div>
 </nav>
 
-{/* Eases the row between its condensed and expanded shapes when the width
-    crosses the breakpoint, instead of swapping one for the other. */}
+{/* Eases this row and the header around it across their breakpoints, instead
+    of swapping one shape for the other. */}
 <script>
-  import { initNavTransition } from "@/lib/nav-flip";
+  import { initLayoutTransition } from "@/lib/layout-flip";
 
-  initNavTransition();
+  initLayoutTransition();
 </script>

@@ -43,11 +43,11 @@ will say so.
 | Public | What it is |
 | --- | --- |
 | `/` | The latest issue (PDF viewer or HTML body), then the five most recent issues and the five most recent extras, each with a “View more” link. |
-| `/posts` | Every issue, as cards, newest first. |
+| `/posts` | Every issue, as cards, newest first, under a fuzzy search over titles, descriptions, authors and dates. |
 | `/posts/<slug>` | One issue: cover, PDF viewer or HTML body, and the puzzles attached to it. |
-| `/extras` | Every extra — stories, poetry, illustrations. |
+| `/extras` | Every extra — stories, poetry, illustrations, with the same search. |
 | `/extras/<slug>` | One extra, with its author byline. |
-| `/puzzles` · `/puzzles/<index>` | The puzzle list and one interactive puzzle. `<index>` is its position in the newest-first list, not a stored id. |
+| `/puzzles` · `/puzzles/<slug>` | The puzzle list and one interactive puzzle. The route still accepts the position-in-the-list numbers puzzles were once addressed by and redirects to the slug. |
 | `/about` · `/faq` · `/join` | The three editable pages, body HTML included. |
 | `/contact` | The contact form, with the recipient list from the database. |
 | `/admin` | The panel (see below). Everything under it is `noindex`, `no-store` and unframable. |
@@ -58,13 +58,16 @@ Server routes: `/api/contact` is the public form; `/api/admin/{login,logout,cont
 
 There is no migration tool in this repo — the schema lives in the Neon project,
 and these are the tables the code reads and writes. A fresh database needs this
-schema created before the panel will work.
+schema created before the panel will work. `posts.slug`, `extras.slug` and
+`puzzles.slug` are each `text not null` with a unique index, since all three are
+addressed by slug in the URL (`puzzles.slug` was added later: puzzles used to be
+addressed by their position in the newest-first list).
 
 | Table | Columns |
 | --- | --- |
 | `posts` | `id`, `title`, `slug`, `excerpt`, `content`, `cover_image_url`, `cover_image_alt`, `date`, `pdf_url`, `author_id` |
 | `extras` | `id`, `title`, `slug`, `excerpt`, `content`, `cover_image_url`, `cover_image_alt`, `date`, `author_id` |
-| `puzzles` | `id`, `title`, `type`, `data`, `cover_image_url`, `date`, `author_id`, `post_id` |
+| `puzzles` | `id`, `title`, `slug`, `type`, `data`, `cover_image_url`, `date`, `author_id`, `post_id` |
 | `authors` | `id`, `name`, `created_at` |
 | `pages` | `slug` (`about`, `faq`, `join`), `title`, `body_html`, `og_image_url` |
 | `settings` | one row, `id = 1`: `title`, `description`, `footer_html`, `og_image_url` |
@@ -147,6 +150,22 @@ Sign in at **`/admin/login`** with `ADMIN_PASSWORD`.
 | `/admin/settings` | Site title, description, footer and the default social preview. |
 | `/admin/messages` | Contact submissions: read/unread, where each came from, delete. |
 | `/admin/contacts` | Who contact messages are emailed to, plus a test send. |
+
+### HTML fields
+
+Every field that stores HTML — an issue's or extra's content, a page body, the
+footer — is edited in a source editor with **Edit** and **Preview** tabs.
+Preview renders the markup the way the site will, in the same prose styles an
+article uses, so a heading or a figure can be checked without saving first.
+Edit colours the source after Visual Studio Code's own default themes (Light+
+and Dark+, tracking the panel's theme), and Tab indents rather than moving focus
+out of the field.
+
+The colours come from `src/lib/html-highlight.ts`, a scanner rather than a
+parser: half-written markup is the normal state of a field being typed into, so
+anything it does not recognise is left as plain text rather than swallowing the
+rest of the field. Adding a picture to the text still works — the uploader
+inserts a `<figure>` at the cursor, into the same textarea.
 
 ### Puzzles
 

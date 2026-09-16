@@ -36,6 +36,8 @@ export interface Extra extends StoryCard {
 
 export interface Puzzle {
   id: string;
+  /** Stable URL segment — a puzzle used to be addressed by its list position. */
+  slug: string;
   title: string;
   type: "Crossword" | "Find-A-Word" | "Unscramble" | string;
   data: string;
