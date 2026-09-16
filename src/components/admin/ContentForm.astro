@@ -1,5 +1,6 @@
 ---
 import Icon from "@/components/ui/Icon.astro";
+import HtmlField from "@/components/admin/HtmlField";
 import MediaField from "@/components/admin/MediaField";
 import PuzzleDataEditor from "@/components/admin/PuzzleDataEditor";
 import { escapeHtml, isoToDateInput, maxLengthFor } from "@/lib/admin";
@@ -76,37 +77,30 @@ function isFull(field: { full?: boolean; type: string }): boolean {
                 </option>
               ))}
             </select>
+          ) : field.type === "textarea" && field.html ? (
+            <HtmlField
+              client:load
+              name={field.name}
+              fieldId={id}
+              initial={value}
+              rows={field.rows ?? 8}
+              required={Boolean(field.required)}
+              maxLength={field.maxLength ?? maxLengthFor(field.name)}
+              placeholder={field.placeholder}
+            />
           ) : field.type === "textarea" ? (
-            <>
-              {/* set:html rather than a child expression: template indentation
-                  would otherwise become part of the textarea's value. */}
-              <textarea
-                id={id}
-                name={field.name}
-                rows={field.rows ?? 6}
-                required={field.required}
-                placeholder={field.placeholder}
-                maxlength={field.maxLength ?? maxLengthFor(field.name)}
-                class={`${inputClass} font-mono text-base`}
-                set:html={escapeHtml(value)}
-              />
-              {/* Body copy is the one text field where a picture is part of the
-                  text, so it gets an uploader that writes into it rather than
-                  asking for a URL that has to be found somewhere else. */}
-              {field.allowImages && (
-                <div class="mt-3">
-                  <MediaField
-                    client:load
-                    mode="insert"
-                    targetId={id}
-                    name={field.name}
-                    initial=""
-                    kind="image"
-                    fieldId={`${id}-insert`}
-                  />
-                </div>
-              )}
-            </>
+            /* set:html rather than a child expression: template indentation
+               would otherwise become part of the textarea's value. */
+            <textarea
+              id={id}
+              name={field.name}
+              rows={field.rows ?? 6}
+              required={field.required}
+              placeholder={field.placeholder}
+              maxlength={field.maxLength ?? maxLengthFor(field.name)}
+              class={`${inputClass} font-mono text-base`}
+              set:html={escapeHtml(value)}
+            />
           ) : field.type === "select" ? (
             <select id={id} name={field.name} required={field.required} class={inputClass}>
               {(field.options ?? []).map((option) => (
@@ -138,6 +132,25 @@ function isFull(field: { full?: boolean; type: string }): boolean {
               autocomplete={field.name === "author_name" ? "off" : undefined}
               class={inputClass}
             />
+          )}
+
+          {/* Body copy is the one text field where a picture is part of the
+              text, so it gets an uploader that writes into it rather than
+              asking for a URL that has to be found somewhere else. It sits
+              outside the control above because it works the same whether that
+              control is a plain textarea or the source editor. */}
+          {field.allowImages && (
+            <div class="mt-3">
+              <MediaField
+                client:load
+                mode="insert"
+                targetId={id}
+                name={field.name}
+                initial=""
+                kind="image"
+                fieldId={`${id}-insert`}
+              />
+            </div>
           )}
 
           {field.help && (

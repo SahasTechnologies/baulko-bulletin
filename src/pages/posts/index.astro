@@ -1,8 +1,7 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import PageHeader from "@/components/PageHeader.astro";
-import CoverImage from "@/components/ui/CoverImage";
-import DateComponent from "@/components/ui/DateComponent";
+import SearchableCards from "@/components/ui/SearchableCards";
 import { getSettings, getAllPostCards } from "@/lib/db";
 
 const settings = await getSettings();
@@ -19,24 +18,9 @@ const posts = await getAllPostCards();
       posts.length === 0 ? (
         <p class="text-xl opacity-70">No issues published yet.</p>
       ) : (
-        <div class="mb-32 grid grid-cols-1 gap-y-20 md:grid-cols-2 md:gap-x-16">
-          {posts.map((post) => (
-            <article>
-              <a class="group mb-5 block" href={`/posts/${post.slug}`}>
-                <CoverImage client:load src={post.cover_image_url} alt={post.cover_image_alt} />
-              </a>
-              <h3 class="mb-3 text-3xl font-bold leading-snug tracking-tighter">
-                <a href={`/posts/${post.slug}`} class="hover:underline">
-                  {post.title}
-                </a>
-              </h3>
-              <div class="mb-2 text-lg opacity-70">
-                <DateComponent client:load dateString={post.date} />
-              </div>
-              {post.excerpt && <p class="mt-3 text-lg leading-relaxed">{post.excerpt}</p>}
-            </article>
-          ))}
-        </div>
+        /* The grid and the search box are one island: filtering reorders the
+           cards, so the query and the cards have to be rendered together. */
+        <SearchableCards client:load items={posts} kind="issue" />
       )
     }
   </div>

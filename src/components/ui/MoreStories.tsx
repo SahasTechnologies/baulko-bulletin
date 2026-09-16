@@ -79,13 +79,24 @@ function CardRow({
         ))}
         {/* The way on is the next card in the row rather than a link below it:
             the row is where the eye already is, and a reader who has scrolled to
-            the end of it finds the link at the end of the scroll. Sized to the
-            box the other cards open with, so the row stays even. */}
+            the end of it finds the link at the end of the scroll.
+
+            It is a card-sized box, not a cover-sized one: the row stretches it
+            to the height of the tallest card beside it, so it stands as tall and
+            as wide as a card — heading, excerpt and byline included — rather
+            than sitting in the corner of the space a card would have taken.
+
+            Nothing about it grows outward on hover. A transform on the box is
+            clipped by the row that scrolls it (an overflow on one axis is an
+            overflow on both), so the pop is inside: the label and its arrow
+            scale up, and the box's own fill and edge come forward. */}
         {moreLabel && (
-          <a href={moreHref} className="group w-[80vw] shrink-0 snap-start md:w-[550px]">
-            <div className="flex aspect-[2/1] w-full flex-col items-center justify-center gap-3 rounded-2xl border border-black/10 bg-black/5 text-2xl font-bold transition group-hover:scale-[1.03] group-hover:bg-black/10 dark:border-white/15 dark:bg-white/5 dark:group-hover:bg-white/10">
-              <Icon name="chevron-forward" className="text-4xl transition group-hover:translate-x-1" />
-              {moreLabel}
+          <a href={moreHref} className="group flex w-[80vw] shrink-0 snap-start md:w-[550px]">
+            <div className="flex w-full flex-1 items-center justify-center rounded-2xl border border-black/10 bg-black/5 transition-colors group-hover:border-black/20 group-hover:bg-black/10 dark:border-white/15 dark:bg-white/5 dark:group-hover:border-white/25 dark:group-hover:bg-white/10">
+              <span className="flex flex-col items-center gap-3 text-2xl font-bold transition-transform duration-300 group-hover:scale-105">
+                <Icon name="chevron-forward" className="text-4xl transition group-hover:translate-x-1" />
+                {moreLabel}
+              </span>
             </div>
           </a>
         )}

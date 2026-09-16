@@ -43,6 +43,12 @@ export interface FieldDef {
   /** Renders full width in the two-column form grid. */
   full?: boolean;
   /**
+   * The textarea holds HTML, so the field gets the panel's source editor: a
+   * Preview tab, and Edit with the markup coloured. Plain prose fields (an
+   * excerpt, a slug) are left as ordinary textareas.
+   */
+  html?: boolean;
+  /**
    * Body copy: the field also gets an uploader that inserts a `<figure>` into
    * the text at the cursor, so an illustrated piece can be written entirely in
    * the panel rather than needing picture URLs pasted in by hand.
@@ -108,6 +114,7 @@ const posts: EntityDef = {
       type: "textarea",
       rows: 8,
       full: true,
+      html: true,
       allowImages: true,
       help: "Only needed when there is no PDF. HTML, not Markdown — paragraphs, headings, links and lists all work. Use “Add a picture to the text” to upload art into the body.",
     },
@@ -154,6 +161,7 @@ const extras: EntityDef = {
       type: "textarea",
       rows: 12,
       full: true,
+      html: true,
       allowImages: true,
       help: "HTML, not Markdown — paragraphs, headings, links and lists all work. Use “Add a picture to the text” to upload art into the body, captioned or not.",
     },
@@ -164,7 +172,7 @@ const puzzles: EntityDef = {
   key: "puzzles",
   singular: "Puzzle",
   plural: "Puzzles",
-  publicHref: () => "/puzzles",
+  publicHref: (row) => (row.slug ? `/puzzles/${row.slug}` : "/puzzles"),
   columns: [
     { label: "Title", field: "title" },
     { label: "Type", field: "type" },
@@ -173,6 +181,13 @@ const puzzles: EntityDef = {
   ],
   fields: [
     { name: "title", label: "Title", type: "text", required: true, placeholder: "East Asian Culture III" },
+    {
+      name: "slug",
+      label: "Slug",
+      type: "text",
+      placeholder: "east-asian-culture-iii",
+      help: "The URL becomes /puzzles/<slug>. Leave blank to derive it from the title.",
+    },
     {
       name: "type",
       label: "Puzzle type",

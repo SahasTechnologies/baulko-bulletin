@@ -114,6 +114,7 @@ function mapPuzzleSummary(
   const post = postId ? postsById.get(postId) : undefined;
   return {
     id: asText(row.id),
+    slug: asText(row.slug),
     title: asText(row.title),
     type: asText(row.type),
     date: asText(row.date),
@@ -266,7 +267,7 @@ async function postsById(sql: Sql) {
  * Shared by both puzzle queries so the listing and the reader cannot drift
  * apart over which picture they show.
  */
-const PUZZLE_COLUMNS = `puzzles.id, puzzles.title, puzzles.type, puzzles.date,
+const PUZZLE_COLUMNS = `puzzles.id, puzzles.slug, puzzles.title, puzzles.type, puzzles.date,
              puzzles.post_id,
              COALESCE(puzzles.cover_image_url, issues.cover_image_url) AS cover_image_url,
              authors.name AS author_name`;
@@ -293,9 +294,11 @@ export async function getPuzzles(): Promise<PuzzleSummary[]> {
 }
 
 /**
- * The puzzle at `index` in the newest-first list above — the same order, and
- * therefore the same URL, the puzzles page links with. It carries `data`, since
- * this is the one caller that renders the puzzle itself.
+ * The puzzle at `index` in the newest-first list above.
+ *
+ * Nothing links here any more — a puzzle is addressed by its slug — but the
+ * numbers this replaced were live URLs for months, so the route still reads
+ * them and redirects to the puzzle they name.
  */
 export async function getPuzzleByIndex(index: number): Promise<Puzzle | null> {
   if (!Number.isInteger(index) || index < 0) return null;
@@ -313,17 +316,39 @@ export async function getPuzzleByIndex(index: number): Promise<Puzzle | null> {
   }, null);
 }
 
-/** A puzzle plus its position in the newest-first list, which forms its public URL. */
+/** A puzzle plus its position in the newest-first list, which the tile prints. */
 export interface IndexedPuzzle {
   puzzle: PuzzleSummary;
   index: number;
 }
 
 /**
+ * One puzzle by its slug, the address the puzzles page links with and the one
+ * anyone sharing a puzzle will paste. It carries `data`, since this is the one
+ * caller that renders the puzzle itself.
+ */
+export async function getPuzzleBySlug(slug: string): Promise<Puzzle | null> {
+  if (!slug) return null;
+  return run(async (sql) => {
+    const rows = await sql`
+      SELECT ${sql.unsafe(PUZZLE_COLUMNS)}, puzzles.data
+      FROM puzzles
+      ${sql.unsafe(PUZZLE_JOINS)}
+      WHERE puzzles.slug = ${slug}
+      LIMIT 1
+    `;
+    if (!rows[0]) return null;
+    const byId = await postsById(sql);
+    return mapPuzzle(rows[0] as Record<string, unknown>, byId);
+  }, null);
+}
+
+/**
  * The puzzles that belong to one issue, for the list at the foot of its page.
  *
- * The index is not stored: `/puzzles/<index>` addresses the same newest-first
- * list the puzzles page renders, so it has to be derived from that order.
+ * The position is only printed on the tile now that the slug is the address —
+ * but it is still derived from the newest-first order, the same order the
+ * puzzles page renders.
  */
 export async function getPuzzlesForPost(postId: string): Promise<IndexedPuzzle[]> {
   const all = await getPuzzles();

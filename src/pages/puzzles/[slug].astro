@@ -5,12 +5,23 @@ import { Crossword } from "@/components/puzzles/Crossword";
 import { FindAWord } from "@/components/puzzles/FindAWord";
 import { Unscramble } from "@/components/puzzles/Unscramble";
 import MoreStories from "@/components/ui/MoreStories";
-import { getSettings, getPuzzleByIndex, getMorePosts } from "@/lib/db";
+import { getSettings, getPuzzleBySlug, getPuzzleByIndex, getMorePosts } from "@/lib/db";
 
-const { index } = Astro.params;
+const { slug } = Astro.params;
 const settings = await getSettings();
-// Only this puzzle's grid is fetched — the listings do not carry `data`.
-const puzzle = await getPuzzleByIndex(Number.parseInt(index!, 10));
+
+// Puzzles used to be addressed by their position in the newest-first list, and
+// those numeric URLs were live for months. They still resolve — by redirecting
+// to the slug. Temporary rather than permanent on purpose: a position is only
+// correct until the next puzzle is added or re-dated, so a cached permanent
+// redirect would eventually send readers to the wrong puzzle.
+if (slug !== undefined && /^\d+$/.test(slug)) {
+  const found = await getPuzzleByIndex(Number.parseInt(slug, 10));
+  if (found) return Astro.redirect(`/puzzles/${found.slug}`, 302);
+  return Astro.redirect("/puzzles", 302);
+}
+
+const puzzle = await getPuzzleBySlug(slug ?? "");
 
 if (!puzzle) {
   return Astro.redirect("/puzzles");

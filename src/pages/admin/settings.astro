@@ -1,6 +1,7 @@
 ---
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import Flash from "@/components/admin/Flash.astro";
+import HtmlField from "@/components/admin/HtmlField";
 import Icon from "@/components/ui/Icon.astro";
 import { getSettingsRow } from "@/lib/admin-db";
 import { escapeHtml, flashFromUrl } from "@/lib/admin";
@@ -70,14 +71,14 @@ const inputClass =
 
     <div>
       <label for="footer_html" class="mb-1 block text-sm font-medium">Footer (HTML)</label>
-      <textarea
-        id="footer_html"
+      <HtmlField
+        client:load
         name="footer_html"
-        rows="10"
-        maxlength="200000"
+        fieldId="footer_html"
+        initial={settings.footer_html ?? ""}
+        rows={10}
+        maxLength={200000}
         placeholder="Leave blank for the default “Join the Bulletin” footer"
-        class={`${inputClass} font-mono text-base`}
-        set:html={escapeHtml(settings.footer_html ?? "")}
       />
       <p class="mt-1 text-sm leading-relaxed opacity-60">
         Leave blank to keep the built-in footer (join details, contact button and credits).

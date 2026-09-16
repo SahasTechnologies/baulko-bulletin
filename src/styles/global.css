@@ -80,6 +80,14 @@ ion-icon {
   vertical-align: -0.2em;
 }
 
+/* The search fields carry their own clear button, so the browser's is turned
+   off rather than being shown beside it. */
+[type="search"]::-webkit-search-cancel-button,
+[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 /* Buttons don't get a pointer cursor by default; links do. */
 button:not(:disabled),
 [role="button"]:not([aria-disabled="true"]),
@@ -291,12 +299,12 @@ button:not(:disabled):active {
   }
 }
 
-/* Crossing the breakpoint swaps one shape of nav for the other, which is a
-   jump. `src/lib/nav-flip.ts` eases each link across instead — and this is the
-   other half of that: while it does, the labels must not animate on their own.
-   Two motions at once fight each other, and the label's own transition would
-   also defeat the measurement the flip is based on. */
-.nav-flip .icon-nav-label {
+/* Crossing a breakpoint swaps one shape of a row for the other, which is a
+   jump. `src/lib/layout-flip.ts` eases each element across instead — and this is
+   the other half of that: while it does, the labels must not animate on their
+   own. Two motions at once fight each other, and the label's own transition
+   would also defeat the measurement the flip is based on. */
+.layout-flip .icon-nav-label {
   transition: none !important;
 }
 
@@ -414,6 +422,72 @@ button:not(:disabled):active {
 
 .pdfTextLayer ::selection {
   background: rgb(0 100 255 / 0.35);
+}
+
+/* The admin panel's HTML field (`src/components/admin/HtmlField.tsx`).
+
+   The colours live on a <pre> underneath a transparent <textarea> that owns
+   the value and the caret, and both layers carry `.html-code`, so they lay the
+   text out identically — same font, size, leading, wrapping and padding. Any
+   difference between the two shows up as the caret sliding away from the word
+   underneath it. */
+.html-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  padding: 1rem;
+}
+
+/* The field's own text is transparent, so the selection highlight is what says
+   what is selected — and the colour underneath stays readable through it. */
+.html-code::selection {
+  background: rgb(0 120 215 / 0.35);
+}
+
+/* Visual Studio Code's default themes, so the panel's HTML field looks like the
+   editor the copy was written in: Light+ on the light page, Dark+ on the dark
+   one. Neutral text is left to the surrounding colour. */
+.html-tag {
+  color: #800000;
+}
+
+.html-attr {
+  color: #ff0000;
+}
+
+.html-value {
+  color: #0000ff;
+}
+
+.html-comment {
+  color: #008000;
+}
+
+.html-punct {
+  color: #000000;
+}
+
+html.dark .html-tag {
+  color: #569cd6;
+}
+
+html.dark .html-attr {
+  color: #9cdcfe;
+}
+
+html.dark .html-value {
+  color: #ce9178;
+}
+
+html.dark .html-comment {
+  color: #6a9955;
+}
+
+html.dark .html-punct {
+  color: #d4d4d4;
 }
 
 .theme-toggle {
