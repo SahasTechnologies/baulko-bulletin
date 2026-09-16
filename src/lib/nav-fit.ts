@@ -122,14 +122,23 @@ function roomFor(nav: HTMLElement): number {
     (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
   const content = box.width - padding;
 
+  // The row's cells carry their spacing as padding, so the row's box is that
+  // much wider than the icons it draws, and its own negative margins give it
+  // back: what may reach the column's edge is the last icon, not the padding
+  // after it.
+  const navStyle = getComputedStyle(nav);
+  const overhang =
+    -((Number.parseFloat(navStyle.marginLeft) || 0) + (Number.parseFloat(navStyle.marginRight) || 0));
+
   const isRow = style.display.includes("flex") && style.flexDirection.startsWith("row");
-  if (!isRow) return content;
+  if (!isRow) return content + overhang;
 
   const gap = Number.parseFloat(style.columnGap) || 0;
   const beside = Array.from(parent.children).filter((child) => child !== nav);
   const taken =
     beside.reduce((sum, child) => sum + child.getBoundingClientRect().width, 0) + gap * beside.length;
-  return content - taken;
+
+  return content - taken + overhang;
 }
 
 /**

@@ -234,15 +234,23 @@ button:not(:disabled):active {
 }
 
 /* The icon sits above the label, so the label appears to emerge from under
-   it; rotating the icon on hover keeps the little flourish the old nav had. */
+   it; rotating the icon on hover keeps the little flourish the old nav had.
+   An icon is as wide as its own 1em box, so this is what sizes it — a touch
+   larger than the text it sits in, since an icon carries less weight than a
+   letterform of the same height. */
 .icon-nav-link .icon {
   position: relative;
   z-index: 1;
   flex: none;
+  font-size: 1.25em;
   transition: transform 300ms ease;
 }
 
-.icon-nav-link:hover .icon {
+/* On the cell rather than the link, so the whole cell — padding included —
+   counts as hovering it. The pointer that has just left one icon is then
+   already inside the next cell, and the label it is heading for opens as it
+   arrives instead of after a dead zone. */
+.icon-nav-item:hover .icon {
   transform: rotate(12deg);
 }
 
@@ -271,12 +279,24 @@ button:not(:disabled):active {
    cannot hover. Neither class is ever set with JavaScript off, so the icons
    stay icons. */
 @media (hover: hover) and (pointer: fine) and (min-width: 48rem) {
-  /* No space between the cells. A gap is a dead zone: a pointer crossing it is
-     over nothing, so the label it left closes and the row jumps before the next
-     one opens. Touching cells make moving along the row one motion. It is also
-     the spacing the fit test measures with, since the two lines inherit it. */
+  /* The space between the icons belongs to the cells, as padding, rather than
+     sitting between them as a gap. The eye sees the same gap it saw before —
+     two cells' padding meeting — but a pointer sliding along the row is never
+     over nothing: each cell's box reaches the middle of the space, so the label
+     it left cannot close before the next one opens. The row's ends then hang
+     out by that padding, so the first and last icons still sit on the column's
+     edges rather than inset by it. `src/lib/nav-fit.ts` allows for the overhang
+     when it works out what the row has room for. */
   html:not(.nav-spelled) .icon-nav {
     column-gap: 0;
+    margin-inline: -0.6em;
+  }
+
+  /* Every cell carries that padding, not just the links — the theme switch is a
+     cell too, and a cell without it would both leave a dead zone beside it and
+     push its icon out past the column's edge. */
+  html:not(.nav-spelled) .icon-nav-item {
+    padding-inline: 0.6em;
   }
 
   html:not(.nav-two-rows):not(.nav-spelled) .icon-nav {
@@ -306,7 +326,7 @@ button:not(:disabled):active {
       transform 350ms ease;
   }
 
-  html:not(.nav-spelled) .icon-nav-link:hover .icon-nav-label,
+  html:not(.nav-spelled) .icon-nav-item:hover .icon-nav-label,
   html:not(.nav-spelled) .icon-nav-link:focus-visible .icon-nav-label,
   html:not(.nav-spelled) .icon-nav-link[aria-current="page"] .icon-nav-label {
     max-width: 8em;
