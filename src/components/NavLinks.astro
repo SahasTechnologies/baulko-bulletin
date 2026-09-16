@@ -23,31 +23,48 @@ const currentPath = Astro.url.pathname.replace(/\/+$/, "") || "/";
 
 const isActive = (href: string) =>
   href === "/" ? currentPath === "/" : currentPath === href || currentPath.startsWith(`${href}/`);
+
+/**
+ * The links in two groups, which is the full extent of what a second line is:
+ * every layout other than `nav-two-rows` puts them back in one flow. The split
+ * is fixed rather than measured, since every cell is an icon wide and only the
+ * labels differ.
+ */
+const linkLines = [links.slice(0, 5), links.slice(5)];
 ---
 
 <nav class:list={["icon-nav text-xl font-medium", extraClass]}>
   {
-    links.map((link) => (
-      <div class="icon-nav-item">
-        <a
-          href={link.href}
-          aria-current={isActive(link.href) ? "page" : undefined}
-          class="icon-nav-link"
-        >
-          <Icon name={link.icon} />
-          <span class="icon-nav-label">{link.label}</span>
-        </a>
+    /* The wrappers carry no box unless `nav-two-rows` gives them one, so the
+       cells flow together for every other shape. See src/lib/nav-fit.ts. */
+    linkLines.map((line, lineIndex) => (
+      <div class="icon-nav-line">
+        {line.map((link) => (
+          <div class="icon-nav-item">
+            <a
+              href={link.href}
+              aria-current={isActive(link.href) ? "page" : undefined}
+              class="icon-nav-link"
+            >
+              <Icon name={link.icon} />
+              <span class="icon-nav-label">{link.label}</span>
+            </a>
+          </div>
+        ))}
+        {/* The switch rides with the last link, the way it always has. */}
+        {lineIndex === linkLines.length - 1 && (
+          <div class="icon-nav-item">
+            <ThemeToggle client:load />
+          </div>
+        )}
       </div>
     ))
   }
-  <div class="icon-nav-item">
-    <ThemeToggle client:load />
-  </div>
 </nav>
 
 {/* Eases this row and the header around it between their shapes, instead of
-    swapping one for the other — and, on a laptop, spells the labels out when
-    they cannot all fit beside the icons at once. */}
+    swapping one for the other — and, on a laptop, decides whether the icons fit
+    on one line, need two, or have to give up on hiding their labels. */}
 <script>
   import { initLayoutTransition } from "@/lib/layout-flip";
 
