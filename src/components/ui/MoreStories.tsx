@@ -64,7 +64,7 @@ function CardRow({
       <h2 className="mb-8 text-4xl font-bold leading-tight tracking-tighter md:text-5xl">
         {heading}
       </h2>
-      <div className="mb-6 md:mb-12 pb-2 flex snap-x snap-mandatory overflow-x-scroll gap-x-8 lg:gap-x-10">
+      <div className="mb-6 md:mb-12 pb-2 flex snap-x snap-mandatory overflow-x-auto gap-x-8 lg:gap-x-10">
         {cards.map((card) => (
           <Card
             key={card.id}
@@ -77,16 +77,19 @@ function CardRow({
             author={card.author}
           />
         ))}
+        {/* The way on is the next card in the row rather than a link below it:
+            the row is where the eye already is, and a reader who has scrolled to
+            the end of it finds the link at the end of the scroll. Sized to the
+            box the other cards open with, so the row stays even. */}
+        {moreLabel && (
+          <a href={moreHref} className="group w-[80vw] shrink-0 snap-start md:w-[550px]">
+            <div className="flex aspect-[2/1] w-full flex-col items-center justify-center gap-3 rounded-2xl border border-black/10 bg-black/5 text-2xl font-bold transition group-hover:scale-[1.03] group-hover:bg-black/10 dark:border-white/15 dark:bg-white/5 dark:group-hover:bg-white/10">
+              <Icon name="chevron-forward" className="text-4xl transition group-hover:translate-x-1" />
+              {moreLabel}
+            </div>
+          </a>
+        )}
       </div>
-      {moreLabel && (
-        <a
-          href={moreHref}
-          className="inline-flex items-center gap-2 text-lg font-bold hover:underline"
-        >
-          {moreLabel}
-          <Icon name="chevron-forward" />
-        </a>
-      )}
     </>
   );
 }

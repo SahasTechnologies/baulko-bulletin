@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Icon from "@/components/ui/Icon.astro";
+import Logo from "@/components/ui/Logo.astro";
 import { getSettings } from "@/lib/db";
 
 export const prerender = false;
@@ -36,7 +37,7 @@ const isActive = (href: string) =>
       class="mb-8 mt-10 flex flex-col gap-5 border-b border-black/10 pb-6 dark:border-white/10 lg:flex-row lg:items-center lg:justify-between"
     >
       <a href="/admin" class="flex items-center gap-3 text-3xl font-bold leading-tight tracking-tight hover:underline">
-        <img alt="Bulletin logo" class="size-[52px]" height={350} width={350} src="/bulletin.png" />
+        <Logo class="size-[52px]" />
         {settings.title}
         <span class="rounded-full bg-black/10 px-3 py-1 text-sm font-semibold tracking-normal dark:bg-white/15">
           Admin
@@ -84,6 +85,14 @@ const isActive = (href: string) =>
     </nav>
 
     <slot />
+
+    {/* Same easing as the public nav, for the same reason: this one changes
+        shape at the same breakpoint. */}
+    <script>
+      import { initNavTransition } from "@/lib/nav-flip";
+
+      initNavTransition();
+    </script>
 
     {/* One listener for the whole panel instead of an inline `onsubmit` per form.
         A handler written as `onsubmit="return confirm('Delete “…”)'` interpolates

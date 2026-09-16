@@ -1,0 +1,47 @@
+---
+/**
+ * The Bulletin mark, in both themes.
+ *
+ * The artwork is drawn for a white page — a black outline around orange fill —
+ * so it disappears against the dark background. `tools/make-logo-dark.mjs`
+ * derives `bulletin-dark.png` from the light file, and the two `dark:` classes
+ * pick between them from the `dark` class on `<html>`, the same signal the rest
+ * of the site switches on. No JavaScript is involved, so the right one is
+ * painted with the first frame.
+ *
+ * Sizing comes from the caller: pass the utilities that set the size, since
+ * every place the mark appears draws it at a different one. It is square, and
+ * both files are 850x850, so the two never disagree about the space they take.
+ */
+
+interface Props {
+  /** Tailwind size utilities, e.g. `size-[60px]`. */
+  class?: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+}
+
+const {
+  class: className = "size-[60px]",
+  alt = "Bulletin logo",
+  width = 850,
+  height = 850,
+} = Astro.props;
+---
+
+<img
+  alt={alt}
+  class:list={[className, "dark:hidden"]}
+  width={width}
+  height={height}
+  src="/bulletin.png"
+/>
+<img
+  alt=""
+  aria-hidden="true"
+  class:list={[className, "hidden dark:block"]}
+  width={width}
+  height={height}
+  src="/bulletin-dark.png"
+/>

@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Icon from "@/components/ui/Icon.astro";
+import Logo from "@/components/ui/Logo.astro";
 import { getSettings } from "@/lib/db";
 import { adminConfigured, adminPassword } from "@/lib/auth";
 import { flashFromUrl, safeAdminPath } from "@/lib/admin";
@@ -25,7 +26,7 @@ const inputClass =
   <div class="container mx-auto px-5">
     <div class="mx-auto mt-20 max-w-md">
       <div class="mb-8 flex items-center gap-3">
-        <img alt="Bulletin logo" class="size-[52px]" height={350} width={350} src="/bulletin.png" />
+        <Logo class="size-[52px]" />
         <div>
           <h1 class="text-3xl font-bold leading-tight tracking-tighter">Bulletin Admin</h1>
           <p class="opacity-70">Staff access only.</p>

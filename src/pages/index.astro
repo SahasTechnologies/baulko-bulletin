@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import NavLinks from "@/components/NavLinks.astro";
+import Logo from "@/components/ui/Logo.astro";
 import CoverImage from "@/components/ui/CoverImage";
 import DateComponent from "@/components/ui/DateComponent";
 import MoreStories from "@/components/ui/MoreStories";
@@ -16,13 +17,7 @@ const extras = await getAllExtras(5);
 <BaseLayout settings={settings}>
   <div class="container mx-auto px-5">
     <section class="mt-12 mb-12 flex flex-col items-center lg:mb-10 lg:flex-row lg:items-center lg:justify-evenly">
-      <img
-        alt="Bulletin logo of orange"
-        class="size-[180px] lg:size-[230px]"
-        height={350}
-        width={350}
-        src="/bulletin.png"
-      />
+      <Logo alt="Bulletin logo of orange" class="size-[180px] lg:size-[230px]" />
       <h1 class="text-center lg:text-start text-6xl font-bold leading-none tracking-tighter lg:pr-8 lg:text-7xl">
         {settings.title}
       </h1>

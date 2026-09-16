@@ -15,7 +15,8 @@
     "preview": "astro preview --host",
     "astro": "astro",
     "check": "astro check && node scripts/sync-icons.mjs --check",
-    "icons": "node scripts/sync-icons.mjs"
+    "icons": "node scripts/sync-icons.mjs",
+    "logo:dark": "node tools/make-logo-dark.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^6.0.4",

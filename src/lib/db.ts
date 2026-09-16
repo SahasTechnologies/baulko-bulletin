@@ -255,6 +255,26 @@ async function postsById(sql: Sql) {
 }
 
 /**
+ * What a puzzle listing draws, and where the picture comes from.
+ *
+ * Every puzzle of an issue was printed with the same artwork — the issue's own
+ * — so a puzzle with no cover of its own falls back to the issue it belongs to.
+ * One file per issue is fetched and cached instead of one per puzzle, the tile
+ * is never empty, and setting a cover on a single puzzle still overrides it.
+ * (The two stand-alone test puzzles belong to no issue and keep the plain tile.)
+ *
+ * Shared by both puzzle queries so the listing and the reader cannot drift
+ * apart over which picture they show.
+ */
+const PUZZLE_COLUMNS = `puzzles.id, puzzles.title, puzzles.type, puzzles.date,
+             puzzles.post_id,
+             COALESCE(puzzles.cover_image_url, issues.cover_image_url) AS cover_image_url,
+             authors.name AS author_name`;
+
+const PUZZLE_JOINS = `LEFT JOIN authors ON authors.id = puzzles.author_id
+      LEFT JOIN posts AS issues ON issues.id = puzzles.post_id`;
+
+/**
  * The puzzles, newest first, without their solution grids. `data` is the whole
  * puzzle — a few kilobytes each — and only the reader on the puzzle's own page
  * needs it; a listing draws the title, type, date, author and cover.
@@ -262,11 +282,9 @@ async function postsById(sql: Sql) {
 export async function getPuzzles(): Promise<PuzzleSummary[]> {
   return run(async (sql) => {
     const rows = await sql`
-      SELECT puzzles.id, puzzles.title, puzzles.type, puzzles.date,
-             puzzles.cover_image_url, puzzles.post_id,
-             authors.name AS author_name
+      SELECT ${sql.unsafe(PUZZLE_COLUMNS)}
       FROM puzzles
-      LEFT JOIN authors ON authors.id = puzzles.author_id
+      ${sql.unsafe(PUZZLE_JOINS)}
       ORDER BY puzzles.date DESC
     `;
     const byId = await postsById(sql);
@@ -283,9 +301,9 @@ export async function getPuzzleByIndex(index: number): Promise<Puzzle | null> {
   if (!Number.isInteger(index) || index < 0) return null;
   return run(async (sql) => {
     const rows = await sql`
-      SELECT puzzles.*, authors.name AS author_name
+      SELECT ${sql.unsafe(PUZZLE_COLUMNS)}, puzzles.data
       FROM puzzles
-      LEFT JOIN authors ON authors.id = puzzles.author_id
+      ${sql.unsafe(PUZZLE_JOINS)}
       ORDER BY puzzles.date DESC
       OFFSET ${index} LIMIT 1
     `;

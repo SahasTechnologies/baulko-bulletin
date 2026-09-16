@@ -6,6 +6,64 @@
 html {
   font-family: "Red Hat Text", ui-sans-serif, system-ui, sans-serif;
   color-scheme: light;
+  /* The scrollbar keeps its space whether or not the page needs one, so
+     filtering a listing down to two results does not shift the whole grid
+     sideways as the bar appears and disappears. */
+  scrollbar-gutter: stable;
+}
+
+/* Scrollbars. The default chrome bar is one of the few pieces of browser
+   furniture a page can restyle, so it is set once here and every scroller in
+   the site — the page itself, the card rows, the admin's wide tables — picks it
+   up: a thin, translucent, rounded thumb that sits on the background rather
+   than beside it.
+
+   Chrome and Safari take the ::-webkit- rules; the standard properties are
+   scoped to engines without them, because Chrome also understands those and
+   drops the pseudo-element styling the moment they are present. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgb(0 0 0 / 0.28);
+  /* The bar is inset by a transparent border, so what is drawn is a slim
+     rounded pill floating in the track instead of a full-width block. */
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(0 0 0 / 0.45);
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background-color: rgb(255 255 255 / 0.25);
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(255 255 255 / 0.4);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(0 0 0 / 0.28) transparent;
+  }
+
+  html.dark * {
+    scrollbar-color: rgb(255 255 255 / 0.25) transparent;
+  }
 }
 
 html.dark {
@@ -91,29 +149,33 @@ button:not(:disabled):active {
 /* Icon-only nav rows — used by the public NavLinks and the admin panel's
    section nav.
 
-   Layout: one nowrap flex row of icon-sized cells. Nothing is reserved up
-   front, so the icons stay packed together and the row is barely wider than
-   the icons themselves; when a label slides out it grows into the free space
-   beside it and pushes the icons after it to the right.
+   Layout: two shapes, one set of cells.
 
-   `flex-wrap: nowrap` is what keeps this stable on every device: the row can
-   never break onto a second line, so hovering even the longest label can only
-   move icons sideways — it can never re-flow the nav. The narrow-screen rule
-   below shrinks the row enough that the longest label opening next to the
-   current page's already-open label still fits the smallest phone width we
-   support.
+   On a device that can hover, at a laptop's width, the row is a single line of
+   icon-sized cells with each label collapsed behind its icon; hovering,
+   focusing, or being the current page slides the label out. Nothing is
+   reserved up front, so the icons stay packed together and the row is barely
+   wider than the icons themselves, and `flex-wrap: nowrap` means the row can
+   never break onto a second line — the longest label opening can only move
+   icons sideways, never re-flow the nav.
+
+   Everywhere else the labels are simply shown, in full. A phone has no hover
+   and a narrow window has no room to spare, so collapsing a label there would
+   hide a link's name from a reader with no way to summon it back; the row
+   wraps instead, and every link keeps its icon beside its name.
 
    Hover/focus slides the label in from the left; the link for the page you
    are on keeps its label out permanently (aria-current="page"). Pure CSS, so
    it works before hydration and without JS. */
 .icon-nav {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-start;
-  /* The row owns its spacing so every call site lays out identically: tight
-     on phones, roomy on wide screens. */
-  column-gap: clamp(0.75rem, 2.5vw, 2rem);
+  /* Centred, so the wrapped lines read as a block in the middle of the column
+     rather than as a left-aligned list that happens to be short. */
+  justify-content: center;
+  /* The row owns its spacing so every call site lays out identically. */
+  gap: 0.4rem 1.25rem;
 }
 
 /* Cells are content-sized and never shrink: an item is exactly its icon (plus
@@ -124,6 +186,23 @@ button:not(:disabled):active {
   flex: none;
 }
 
+/* Phones: a touch tighter, so a wrapped row costs fewer lines. */
+@media (max-width: 30rem) {
+  .icon-nav {
+    gap: 0.35rem 0.9rem;
+    font-size: 0.95rem;
+  }
+}
+
+/* Tablets — and a laptop window dragged narrow — are wide for their text but
+   still cannot hover the labels open. There is room to spend here, so the row
+   breathes rather than staying phone-tight. */
+@media (min-width: 30rem) {
+  .icon-nav {
+    gap: 0.7rem 1.75rem;
+  }
+}
+
 /* A label opening makes the row wider, so a nav sized by its own content will
    hand that extra width on to whatever contains it. Where that container also
    holds text — the home page hero, whose column sits beside the title — the
@@ -131,33 +210,10 @@ button:not(:disabled):active {
    width of its own cannot be resized by what is inside it. The page headers are
    already safe, since there the nav is only pushed against a gap. */
 
-/* Phones: shrink the row a touch, otherwise the widest label ("Dashboard" in
-   the admin nav, "Contact" on the public one) opening beside the current
-   page's already-open label would push past a 375px-wide screen. */
-@media (max-width: 30rem) {
-  .icon-nav {
-    column-gap: 0.6rem;
-    font-size: 0.9rem;
-  }
-}
-
-/* Narrower still (320px-class screens): trim again so the worst-case row
-   still fits inside the page gutter. */
-@media (max-width: 23rem) {
-  .icon-nav {
-    column-gap: 0.4rem;
-    font-size: 0.8rem;
-  }
-}
-
-/* The link clips its own box, so the label can slide out from behind the
-   icon without ever spilling past its own box. */
 .icon-nav-link {
   display: inline-flex;
   align-items: center;
   flex: none;
-  overflow: hidden;
-  white-space: nowrap;
   border-radius: 4px;
 }
 
@@ -174,29 +230,10 @@ button:not(:disabled):active {
   transform: rotate(12deg);
 }
 
-/* Collapsed to zero width; expanded on hover/focus/current page. max-width
-   (rather than width) is what makes the push-the-icons-over effect animate. */
+/* Shown in full by default. Only the hover branch below collapses it. */
 .icon-nav-label {
   display: inline-block;
-  overflow: hidden;
-  max-width: 0;
-  margin-left: 0;
-  opacity: 0;
-  transform: translateX(-100%);
-  transition:
-    max-width 350ms ease,
-    margin-left 350ms ease,
-    opacity 250ms ease,
-    transform 350ms ease;
-}
-
-.icon-nav-link:hover .icon-nav-label,
-.icon-nav-link:focus-visible .icon-nav-label,
-.icon-nav-link[aria-current="page"] .icon-nav-label {
-  max-width: 8em;
   margin-left: 0.4em;
-  opacity: 1;
-  transform: translateX(0);
 }
 
 .icon-nav-link:focus-visible {
@@ -204,11 +241,63 @@ button:not(:disabled):active {
   outline-offset: 3px;
 }
 
+/* A pointer that can hover, and a window as wide as a laptop's: this is the
+   only case where hiding a label is safe, because there is always something to
+   bring it back, and the only case where the room is worth reclaiming. 48rem is
+   the width the rest of the site stops using its phone layout at. */
+@media (hover: hover) and (pointer: fine) and (min-width: 48rem) {
+  .icon-nav {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    column-gap: clamp(0.75rem, 2.5vw, 2rem);
+  }
+
+  /* The link clips its own box, so the label can slide out from behind the
+     icon without ever spilling past its own box. */
+  .icon-nav-link {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  /* Collapsed to zero width; expanded on hover/focus/current page. max-width
+     (rather than width) is what makes the push-the-icons-over effect animate. */
+  .icon-nav-label {
+    max-width: 0;
+    margin-left: 0;
+    opacity: 0;
+    overflow: hidden;
+    transform: translateX(-100%);
+    transition:
+      max-width 350ms ease,
+      margin-left 350ms ease,
+      opacity 250ms ease,
+      transform 350ms ease;
+  }
+
+  .icon-nav-link:hover .icon-nav-label,
+  .icon-nav-link:focus-visible .icon-nav-label,
+  .icon-nav-link[aria-current="page"] .icon-nav-label {
+    max-width: 8em;
+    margin-left: 0.4em;
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .icon-nav-link .icon,
   .icon-nav-label {
     transition: none;
   }
+}
+
+/* Crossing the breakpoint swaps one shape of nav for the other, which is a
+   jump. `src/lib/nav-flip.ts` eases each link across instead — and this is the
+   other half of that: while it does, the labels must not animate on their own.
+   Two motions at once fight each other, and the label's own transition would
+   also defeat the measurement the flip is based on. */
+.nav-flip .icon-nav-label {
+  transition: none !important;
 }
 
 /* The admin panel's nav sits on a plain background where an icon alone can

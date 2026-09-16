@@ -28,6 +28,7 @@ npm install
 npm run dev        # http://localhost:4321
 npm run check      # types, template diagnostics and the generated icons
 npm run icons      # regenerate src/lib/icons.generated.ts after adding an icon
+npm run logo:dark  # regenerate public/bulletin-dark.png after replacing the logo
 npm run build      # production build
 npm run preview    # serve the built output
 ```
@@ -98,7 +99,7 @@ leaves the server and each signature is scoped to one upload attempt.
 | Kind | Where it goes | How the site shows it |
 | --- | --- | --- |
 | Issue cover | `bulletin/` | Cropped to the site's 2:1 shape through an ImageKit transform (`w-2000,h-1000,fo-auto`, see `src/lib/images.ts`). |
-| Puzzle art | `bulletin/` | Square 1:1 tiles. |
+| Puzzle art | `bulletin/` | Square 1:1 tiles. A puzzle with no cover of its own falls back to its issue's cover, which is the picture it ran with — the puzzles of one issue share one file, so a page of them fetches it once. |
 | Issue PDF | `bulletin/pdfs/` | Read in the pdf.js viewer on the issue's page. |
 | A picture **inside** body copy | `bulletin/` | A plain `<figure><img src="…"><figcaption>…</figcaption></figure>` in the `content`/`body_html` HTML. |
 
@@ -271,3 +272,10 @@ network connection; the committed file is what builds.
 - `tools/trim-cover-borders.mjs <slug>` — removes the even border a cover that was
   photographed against a light backdrop leaves behind. Add `--write` to upload
   the result and repoint the row, `--index` to survey every cover.
+- `tools/make-logo-dark.mjs` — derives `public/bulletin-dark.png` from
+  `public/bulletin.png`, for the dark page: the black outline becomes a light
+  orange, the orange the artwork is drawn in becomes a brighter one, and the
+  transparent cut-outs the drawing encloses become white. `--color` and
+  `--orange` set those two oranges. `Logo.astro` shows one file or the other
+  through the `dark` class on `<html>`; re-run the tool after replacing the
+  light logo.
