@@ -252,9 +252,17 @@ button:not(:disabled):active {
 /* A pointer that can hover, and a window as wide as a laptop's: this is the
    only case where hiding a label is safe, because there is always something to
    bring it back, and the only case where the room is worth reclaiming. 48rem is
-   the width the rest of the site stops using its phone layout at. */
+   the width the rest of the site stops using its phone layout at.
+
+   `html:not(.nav-wrapped)` is the third condition, and it is about room rather
+   than pointer: `src/lib/nav-fit.ts` measures the row with every label open
+   against the width the row actually has, and marks it `nav-wrapped` when the
+   labels would not fit. The row is then left to the rules above — labels shown,
+   wrapping, one line or two — because a label opening into the page's margin is
+   worse than a nav that takes two lines. With JavaScript off the class is never
+   set, so the icons stay icons. */
 @media (hover: hover) and (pointer: fine) and (min-width: 48rem) {
-  .icon-nav {
+  html:not(.nav-wrapped) .icon-nav {
     flex-wrap: nowrap;
     justify-content: flex-start;
     column-gap: clamp(0.75rem, 2.5vw, 2rem);
@@ -262,14 +270,14 @@ button:not(:disabled):active {
 
   /* The link clips its own box, so the label can slide out from behind the
      icon without ever spilling past its own box. */
-  .icon-nav-link {
+  html:not(.nav-wrapped) .icon-nav-link {
     overflow: hidden;
     white-space: nowrap;
   }
 
   /* Collapsed to zero width; expanded on hover/focus/current page. max-width
      (rather than width) is what makes the push-the-icons-over effect animate. */
-  .icon-nav-label {
+  html:not(.nav-wrapped) .icon-nav-label {
     max-width: 0;
     margin-left: 0;
     opacity: 0;
@@ -282,13 +290,34 @@ button:not(:disabled):active {
       transform 350ms ease;
   }
 
-  .icon-nav-link:hover .icon-nav-label,
-  .icon-nav-link:focus-visible .icon-nav-label,
-  .icon-nav-link[aria-current="page"] .icon-nav-label {
+  html:not(.nav-wrapped) .icon-nav-link:hover .icon-nav-label,
+  html:not(.nav-wrapped) .icon-nav-link:focus-visible .icon-nav-label,
+  html:not(.nav-wrapped) .icon-nav-link[aria-current="page"] .icon-nav-label {
     max-width: 8em;
     margin-left: 0.4em;
     opacity: 1;
     transform: translateX(0);
+  }
+
+  /* Spelled out because the labels would not fit beside the icons: the row
+     keeps a laptop's spacing rather than the tighter spacing a phone uses, so
+     that the labels spread over the two lines they need instead of bunching
+     into one and dropping the theme toggle onto a line of its own. */
+  html.nav-wrapped .icon-nav {
+    gap: 0.5rem clamp(0.75rem, 2.5vw, 2rem);
+  }
+
+  /* The fit test's one measuring pass, with every label open so the widest the
+     row could ever be can be summed. It is added and taken off again inside a
+     single frame, so none of it is ever painted — `!important` because the
+     hover rules above would otherwise win on specificity for whichever link
+     the pointer happens to be resting on while a window is dragged. */
+  html.nav-measuring .icon-nav-label {
+    max-width: none !important;
+    margin-left: 0.4em !important;
+    opacity: 0 !important;
+    transform: none !important;
+    transition: none !important;
   }
 }
 

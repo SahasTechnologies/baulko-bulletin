@@ -17,33 +17,51 @@
  * elements, in the same order, in both shapes.
  */
 
+import { navIsWrapped, updateNavFit } from "./nav-fit";
+
 /**
- * One row and the breakpoint it changes shape at. Each `query` has to stay in
- * step with the media query or utility class that lays that row out — the CSS
- * decides the layout, this one only notices when it has changed.
+ * One row and the shapes it moves between. Each group has to stay in step with
+ * the CSS that lays that row out — the CSS decides the layout, this only notices
+ * when it has changed.
  */
 interface Group {
   /** What the two shapes are, so the pairing with the CSS is checkable. */
   shapes: string;
-  /** The breakpoint, mirrored from the CSS. */
-  query: string;
+  /** Which shape the row is in right now, as a token. */
+  shape: () => string;
   /** The elements that move, in DOM order. */
   elements: () => HTMLElement[];
 }
 
+/** A media query, asked repeatedly, without making a list each time. */
+function media(query: string): () => boolean {
+  let list: MediaQueryList | null = null;
+  return () => {
+    list ??= window.matchMedia(query);
+    return list.matches;
+  };
+}
+
+// The hover branch of the nav rules in global.css. Only a pointer that can
+// hover has a way to bring a hidden label back.
+const NAV_POINTER = media("(hover: hover) and (pointer: fine) and (min-width: 48rem)");
+
+// Tailwind's `lg`, which is where `lg:flex-row` takes effect on the page header,
+// the admin header and the home page's hero row.
+const HEADER_ROW = media("(min-width: 64rem)");
+
 const GROUPS: Group[] = [
   {
     shapes: "the nav's labels collapsed behind its icons, and spelled out",
-    // The hover branch of the nav rules in global.css. Only a pointer that can
-    // hover has a way to bring a hidden label back.
-    query: "(hover: hover) and (pointer: fine) and (min-width: 48rem)",
+    // Two things decide this one: the pointer, and whether `src/lib/nav-fit.ts`
+    // found room for every label at once. A row that has to spell its labels out
+    // for want of room is a shape change like any other.
+    shape: () => (NAV_POINTER() && !navIsWrapped() ? "icons" : "spelled-out"),
     elements: () => select(".icon-nav > .icon-nav-item"),
   },
   {
     shapes: "a header's brand and nav stacked, and set side by side",
-    // Tailwind's `lg`, which is where `lg:flex-row` takes effect on the page
-    // header, the admin header and the home page's hero row.
-    query: "(min-width: 64rem)",
+    shape: () => (HEADER_ROW() ? "side-by-side" : "stacked"),
     elements: () => select(".flip-row > *"),
   },
 ];
@@ -139,24 +157,31 @@ function ease(group: Group, before: Positions, after: Positions): void {
  * Starts watching. Safe to call from more than one component — a page can hold
  * both the public nav and the admin one — and a no-op when the reader has asked
  * for reduced motion: this is decoration, and the layout change works without
- * it.
+ * it. The fitting still runs under reduced motion; only the easing is skipped.
  */
 export function initLayoutTransition(): void {
   if (started || typeof window === "undefined") return;
   started = true;
 
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const queries = GROUPS.map((group) => window.matchMedia(group.query));
-  let shape = queries.map((q) => q.matches);
+  // The fit test decides the nav's shape, and it has to have run before the
+  // first snapshot — the page arrives in whatever shape the room allows, with
+  // nothing to ease from.
+  updateNavFit();
+
+  let shape = GROUPS.map((group) => group.shape());
   let snapshot = GROUPS.map(measure);
   let frame = 0;
 
+  // Fits the nav first, so this frame measures and eases one shape of it rather
+  // than acting on a width the fit test is about to change.
   const onResize = () => {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
-      const now = queries.map((q) => q.matches);
-      const crossed = now.map((matches, index) => matches !== shape[index]);
+      updateNavFit();
+      const now = GROUPS.map((group) => group.shape());
+      const crossed = now.map((next, index) => next !== shape[index]);
       if (!crossed.some(Boolean)) {
         // An ordinary resize: no row changed shape, so there is nothing to
         // animate — just keep the record of where things are up to date.
@@ -173,17 +198,26 @@ export function initLayoutTransition(): void {
       document.documentElement.classList.add(RUNNING);
       const after = GROUPS.map(measure);
 
-      // Only the rows that crossed are eased. An element of another row that
-      // sits inside one of them — the nav lives inside both headers — is
-      // carried along by its parent's transform, so easing it separately would
-      // double its movement.
-      GROUPS.forEach((group, index) => {
-        if (crossed[index]) ease(group, snapshot[index] ?? [], after[index]);
-      });
+      if (reduced) {
+        document.documentElement.classList.remove(RUNNING);
+      } else {
+        // Only the rows that crossed are eased. An element of another row that
+        // sits inside one of them — the nav lives inside both headers — is
+        // carried along by its parent's transform, so easing it separately would
+        // double its movement.
+        GROUPS.forEach((group, index) => {
+          if (crossed[index]) ease(group, snapshot[index] ?? [], after[index]);
+        });
+      }
 
       snapshot = after;
     });
   };
 
   window.addEventListener("resize", onResize);
+
+  // The nav's labels are set in a webfont, so how wide the open row is is not
+  // final until it has loaded — and on a slow connection that lands after the
+  // first fit test has already run.
+  document.fonts?.ready.then(onResize).catch(() => {});
 }

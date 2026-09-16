@@ -45,8 +45,9 @@ const isActive = (href: string) =>
   </div>
 </nav>
 
-{/* Eases this row and the header around it across their breakpoints, instead
-    of swapping one shape for the other. */}
+{/* Eases this row and the header around it between their shapes, instead of
+    swapping one for the other — and, on a laptop, spells the labels out when
+    they cannot all fit beside the icons at once. */}
 <script>
   import { initLayoutTransition } from "@/lib/layout-flip";
 
