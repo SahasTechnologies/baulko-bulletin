@@ -17,7 +17,7 @@
  * elements, in the same order, in both shapes.
  */
 
-import { navIsWrapped, updateNavFit } from "./nav-fit";
+import { navShape, updateNavFit } from "./nav-fit";
 
 /**
  * One row and the shapes it moves between. Each group has to stay in step with
@@ -52,12 +52,13 @@ const HEADER_ROW = media("(min-width: 64rem)");
 
 const GROUPS: Group[] = [
   {
-    shapes: "the nav's labels collapsed behind its icons, and spelled out",
-    // Two things decide this one: the pointer, and whether `src/lib/nav-fit.ts`
-    // found room for every label at once. A row that has to spell its labels out
-    // for want of room is a shape change like any other.
-    shape: () => (NAV_POINTER() && !navIsWrapped() ? "icons" : "spelled-out"),
-    elements: () => select(".icon-nav > .icon-nav-item"),
+    shapes: "the nav's labels collapsed behind its icons, and spanned over one or two lines",
+    // Two things decide this one: the pointer, and how many lines of icons
+    // `src/lib/nav-fit.ts` found room for. A nav that has to move onto a second
+    // line — or give up on hiding labels altogether — is a shape change like
+    // any other.
+    shape: () => (NAV_POINTER() ? navShape() : "spelled-out"),
+    elements: () => select(".icon-nav .icon-nav-item"),
   },
   {
     shapes: "a header's brand and nav stacked, and set side by side",
