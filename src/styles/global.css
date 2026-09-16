@@ -271,10 +271,12 @@ button:not(:disabled):active {
    cannot hover. Neither class is ever set with JavaScript off, so the icons
    stay icons. */
 @media (hover: hover) and (pointer: fine) and (min-width: 48rem) {
-  /* One spacing for both icon shapes, on the row rather than on the cells, so
-     the two lines below inherit exactly the gap the fit test measured with. */
+  /* No space between the cells. A gap is a dead zone: a pointer crossing it is
+     over nothing, so the label it left closes and the row jumps before the next
+     one opens. Touching cells make moving along the row one motion. It is also
+     the spacing the fit test measures with, since the two lines inherit it. */
   html:not(.nav-spelled) .icon-nav {
-    column-gap: clamp(0.75rem, 2.5vw, 2rem);
+    column-gap: 0;
   }
 
   html:not(.nav-two-rows):not(.nav-spelled) .icon-nav {
@@ -321,6 +323,9 @@ button:not(:disabled):active {
     flex-direction: column;
     flex-wrap: nowrap;
     row-gap: 0.5rem;
+    /* Both lines start at the same x. Centred lines read as one row that has
+       been nudged sideways, which is not what two lines of icons are. */
+    align-items: flex-start;
   }
 
   html.nav-two-rows .icon-nav-line {
