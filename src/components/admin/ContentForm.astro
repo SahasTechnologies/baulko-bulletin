@@ -77,18 +77,36 @@ function isFull(field: { full?: boolean; type: string }): boolean {
               ))}
             </select>
           ) : field.type === "textarea" ? (
-            // set:html rather than a child expression: template indentation would
-            // otherwise become part of the textarea's value.
-            <textarea
-              id={id}
-              name={field.name}
-              rows={field.rows ?? 6}
-              required={field.required}
-              placeholder={field.placeholder}
-              maxlength={field.maxLength ?? maxLengthFor(field.name)}
-              class={`${inputClass} font-mono text-base`}
-              set:html={escapeHtml(value)}
-            />
+            <>
+              {/* set:html rather than a child expression: template indentation
+                  would otherwise become part of the textarea's value. */}
+              <textarea
+                id={id}
+                name={field.name}
+                rows={field.rows ?? 6}
+                required={field.required}
+                placeholder={field.placeholder}
+                maxlength={field.maxLength ?? maxLengthFor(field.name)}
+                class={`${inputClass} font-mono text-base`}
+                set:html={escapeHtml(value)}
+              />
+              {/* Body copy is the one text field where a picture is part of the
+                  text, so it gets an uploader that writes into it rather than
+                  asking for a URL that has to be found somewhere else. */}
+              {field.allowImages && (
+                <div class="mt-3">
+                  <MediaField
+                    client:load
+                    mode="insert"
+                    targetId={id}
+                    name={field.name}
+                    initial=""
+                    kind="image"
+                    fieldId={`${id}-insert`}
+                  />
+                </div>
+              )}
+            </>
           ) : field.type === "select" ? (
             <select id={id} name={field.name} required={field.required} class={inputClass}>
               {(field.options ?? []).map((option) => (

@@ -17,15 +17,25 @@ try {
 } catch (err) {
   dbError = err instanceof Error ? err.message : String(err);
 }
+
+/** Characters of body copy a card shows before it is cut short. */
+const PREVIEW_LENGTH = 140;
+
+/** The body as plain text, shortened to a preview — with an ellipsis when there is more. */
+function preview(html: string): string {
+  const text = html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "Empty — add some content.";
+  return text.length > PREVIEW_LENGTH ? `${text.slice(0, PREVIEW_LENGTH).trimEnd()}…` : text;
+}
 ---
 
 <AdminLayout title="Pages" current="/admin/pages">
   {flash && <Flash kind={flash.kind} message={flash.message} />}
 
-  <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">Pages</h1>
-  <p class="mb-10 text-lg opacity-70">
-    Body content is HTML. The public site serves About, FAQ and Join from this table.
-  </p>
+  <h1 class="mb-10 text-5xl font-bold leading-tight tracking-tighter">Pages</h1>
 
   {dbError && (
     <div class="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-5">
@@ -43,10 +53,7 @@ try {
         >
           <span class="text-sm opacity-60">/ {page.slug}</span>
           <span class="mb-3 text-2xl font-bold tracking-tight">{page.title}</span>
-          <span class="grow text-sm opacity-60">
-            {page.body_html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140) ||
-              "Empty — add some content."}
-          </span>
+          <span class="grow text-sm opacity-60">{preview(page.body_html)}</span>
           <span class="mt-5 underline underline-offset-4">Edit</span>
         </a>
       ))

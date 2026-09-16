@@ -1,6 +1,7 @@
 ---
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import Flash from "@/components/admin/Flash.astro";
+import MediaField from "@/components/admin/MediaField";
 import Icon from "@/components/ui/Icon.astro";
 import { getPageRow } from "@/lib/admin-db";
 import { escapeHtml, flashFromUrl } from "@/lib/admin";
@@ -84,8 +85,19 @@ const inputClass =
         class={`${inputClass} font-mono text-base`}
         set:html={escapeHtml(page.body_html)}
       />
-      <p class="mt-1 text-sm leading-relaxed opacity-60">
-        HTML, not Markdown. Headings, paragraphs, links and images all work — e.g.
+      <div class="mt-3">
+        <MediaField
+          client:load
+          mode="insert"
+          targetId="body_html"
+          name="body_html"
+          initial=""
+          kind="image"
+          fieldId="body_html-insert"
+        />
+      </div>
+      <p class="mt-3 text-sm leading-relaxed opacity-60">
+        HTML, not Markdown. Headings, paragraphs, links and lists all work — e.g.
         <code>&lt;h2&gt;Our team&lt;/h2&gt;&lt;p&gt;…&lt;/p&gt;</code>
       </p>
     </div>

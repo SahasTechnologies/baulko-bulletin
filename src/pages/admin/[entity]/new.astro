@@ -26,8 +26,7 @@ const issues = def.fields.some((field) => field.name === "post_id")
 ---
 
 <AdminLayout title={`New ${def.singular}`} current={base}>
-  <h1 class="mb-2 text-5xl font-bold leading-tight tracking-tighter">New {def.singular.toLowerCase()}</h1>
-  <p class="mb-10 text-lg opacity-70">{def.blurb}</p>
+  <h1 class="mb-10 text-5xl font-bold leading-tight tracking-tighter">New {def.singular.toLowerCase()}</h1>
 
   <div class="max-w-4xl">
     <ContentForm
