@@ -4,10 +4,14 @@ import PageHeader from "@/components/PageHeader.astro";
 import { Crossword } from "@/components/puzzles/Crossword";
 import { FindAWord } from "@/components/puzzles/FindAWord";
 import { Unscramble } from "@/components/puzzles/Unscramble";
+import { Sudoku } from "@/components/puzzles/Sudoku";
+import { Cryptogram } from "@/components/puzzles/Cryptogram";
+import { Connections } from "@/components/puzzles/Connections";
+import { Nonogram } from "@/components/puzzles/Nonogram";
+import { isPuzzleTypeName } from "@/lib/puzzle-data";
 import MoreStories from "@/components/ui/MoreStories";
 import { croppedSquareUrl } from "@/lib/images";
 import { getSettings, getPuzzleBySlug, getPuzzleByIndex, getMorePosts } from "@/lib/db";
-import type { Puzzle } from "@/types/content";
 
 const { slug } = Astro.params;
 const settings = await getSettings();
@@ -47,9 +51,14 @@ const article = puzzle.type === "Unscramble" ? "an" : "a";
  */
 const ownArt = puzzle.post_id ? null : croppedSquareUrl(puzzle.cover_image_url);
 
-/** The reader each puzzle type is played with. */
-const READABLE: Puzzle["type"][] = ["Crossword", "Find-A-Word", "Unscramble"];
-const playable = READABLE.includes(puzzle.type);
+/**
+ * Whether any reader on this page knows this puzzle's type.
+ *
+ * Asked of the parser's own list rather than kept here: a type the panel can
+ * save and the readers cannot draw used to be discoverable only by opening the
+ * page, and this is the one list that cannot disagree with itself.
+ */
+const playable = isPuzzleTypeName(puzzle.type);
 const morePosts = await getMorePosts(2);
 ---
 
@@ -79,15 +88,21 @@ const morePosts = await getMorePosts(2);
            nothing at all in either the HTML or the browser, and every puzzle
            page came out empty below its title. */
       }
-      {puzzle.type === "Crossword" && <Crossword client:load puzzle={{ data: puzzle.data }} />}
+      {(puzzle.type === "Crossword" || puzzle.type === "Cross-number") && (
+        <Crossword client:load puzzle={{ data: puzzle.data }} />
+      )}
       {puzzle.type === "Find-A-Word" && <FindAWord client:load puzzle={{ data: puzzle.data }} />}
       {puzzle.type === "Unscramble" && <Unscramble client:load puzzle={{ data: puzzle.data }} />}
+      {puzzle.type === "Sudoku" && <Sudoku client:load puzzle={{ data: puzzle.data }} />}
+      {puzzle.type === "Cryptogram" && <Cryptogram client:load puzzle={{ data: puzzle.data }} />}
+      {puzzle.type === "Connections" && <Connections client:load puzzle={{ data: puzzle.data }} />}
+      {puzzle.type === "Nonogram" && <Nonogram client:load puzzle={{ data: puzzle.data }} />}
       {!playable && (
         <div class="max-w-2xl rounded-2xl border border-amber-500/40 bg-amber-500/10 px-6 py-5">
           <p class="mb-1 font-semibold">This puzzle can’t be played here yet.</p>
           <p class="opacity-80">
-            It is stored as “{puzzle.type}”, which no reader on this page understands. Set its
-            type to Crossword, Find-A-Word or Unscramble in the admin panel to make it playable.
+            It is stored as “{puzzle.type}”, which no reader on this page understands. Choose one of
+            the types the panel offers to make it playable.
           </p>
         </div>
       )}
