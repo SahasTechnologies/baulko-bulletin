@@ -148,9 +148,22 @@ export async function getSettings(): Promise<Settings> {
   }, FALLBACK_SETTINGS);
 }
 
+/**
+ * `date` is the publication switch, and every read below is behind it.
+ *
+ * A row whose moment has not arrived is invisible to the public site: absent
+ * from every listing and not found by its own slug, so its page 404s. The
+ * filter lives in the query rather than in the pages because there are eleven
+ * of these reads and one of them forgetting would be enough to leak a
+ * scheduled issue — and `now()` is Postgres's own clock, so the gate cannot
+ * drift from the `AT TIME ZONE 'Australia/Sydney'` moment the admin stored.
+ *
+ * Nothing here is filtered in the admin's own reads (`lib/admin-db.ts`): the
+ * panel has to show what is scheduled, or it could not be edited.
+ */
 export async function getLatestPost(): Promise<Post | null> {
   return run(async (sql) => {
-    const rows = await sql`SELECT * FROM posts ORDER BY date DESC LIMIT 1`;
+    const rows = await sql`SELECT * FROM posts WHERE date <= now() ORDER BY date DESC LIMIT 1`;
     return rows[0] ? mapPost(rows[0] as Record<string, unknown>) : null;
   }, null);
 }
@@ -165,6 +178,7 @@ export async function getMorePosts(limit = 100): Promise<PostCard[]> {
     const rows = await sql`
       SELECT ${sql.unsafe(POST_CARD_COLUMNS)}
       FROM posts
+      WHERE date <= now()
       ORDER BY date DESC
       OFFSET 1
       LIMIT ${limit}
@@ -179,6 +193,7 @@ export async function getAllPostCards(): Promise<PostCard[]> {
     const rows = await sql`
       SELECT ${sql.unsafe(POST_CARD_COLUMNS)}
       FROM posts
+      WHERE date <= now()
       ORDER BY date DESC
     `;
     return rows.map((row) => mapPostCard(row as Record<string, unknown>));
@@ -187,14 +202,14 @@ export async function getAllPostCards(): Promise<PostCard[]> {
 
 export async function getPostBySlug(slug: string): Promise<Post | null> {
   return run(async (sql) => {
-    const rows = await sql`SELECT * FROM posts WHERE slug = ${slug} LIMIT 1`;
+    const rows = await sql`SELECT * FROM posts WHERE slug = ${slug} AND date <= now() LIMIT 1`;
     return rows[0] ? mapPost(rows[0] as Record<string, unknown>) : null;
   }, null);
 }
 
 export async function getAllPostSlugs(): Promise<string[]> {
   return run(async (sql) => {
-    const rows = await sql`SELECT slug FROM posts ORDER BY date DESC`;
+    const rows = await sql`SELECT slug FROM posts WHERE date <= now() ORDER BY date DESC`;
     return rows.map((r) => asText((r as { slug: string }).slug));
   }, []);
 }
@@ -211,6 +226,7 @@ export async function getAllExtras(limit?: number): Promise<ExtraCard[]> {
                  authors.name AS author_name
           FROM extras
           LEFT JOIN authors ON authors.id = extras.author_id
+          WHERE extras.date <= now()
           ORDER BY extras.date DESC
           LIMIT ${limit}
         `
@@ -220,6 +236,7 @@ export async function getAllExtras(limit?: number): Promise<ExtraCard[]> {
                  authors.name AS author_name
           FROM extras
           LEFT JOIN authors ON authors.id = extras.author_id
+          WHERE extras.date <= now()
           ORDER BY extras.date DESC
         `;
     return rows.map((row) => mapExtraCard(row as Record<string, unknown>));
@@ -232,7 +249,7 @@ export async function getExtraBySlug(slug: string): Promise<Extra | null> {
       SELECT extras.*, authors.name AS author_name
       FROM extras
       LEFT JOIN authors ON authors.id = extras.author_id
-      WHERE extras.slug = ${slug}
+      WHERE extras.slug = ${slug} AND extras.date <= now()
       LIMIT 1
     `;
     return rows[0] ? mapExtra(rows[0] as Record<string, unknown>) : null;
@@ -241,13 +258,13 @@ export async function getExtraBySlug(slug: string): Promise<Extra | null> {
 
 export async function getAllExtraSlugs(): Promise<string[]> {
   return run(async (sql) => {
-    const rows = await sql`SELECT slug FROM extras ORDER BY date DESC`;
+    const rows = await sql`SELECT slug FROM extras WHERE date <= now() ORDER BY date DESC`;
     return rows.map((r) => asText((r as { slug: string }).slug));
   }, []);
 }
 
 async function postsById(sql: Sql) {
-  const posts = await sql`SELECT id, slug, title FROM posts`;
+  const posts = await sql`SELECT id, slug, title FROM posts WHERE date <= now()`;
   const map = new Map<string, { slug: string; title: string }>();
   for (const p of posts as { id: string; slug: string; title: string }[]) {
     map.set(asText(p.id), { slug: asText(p.slug), title: asText(p.title) });
@@ -286,6 +303,7 @@ export async function getPuzzles(): Promise<PuzzleSummary[]> {
       SELECT ${sql.unsafe(PUZZLE_COLUMNS)}
       FROM puzzles
       ${sql.unsafe(PUZZLE_JOINS)}
+      WHERE puzzles.date <= now()
       ORDER BY puzzles.date DESC
     `;
     const byId = await postsById(sql);
@@ -307,6 +325,7 @@ export async function getPuzzleByIndex(index: number): Promise<Puzzle | null> {
       SELECT ${sql.unsafe(PUZZLE_COLUMNS)}, puzzles.data
       FROM puzzles
       ${sql.unsafe(PUZZLE_JOINS)}
+      WHERE puzzles.date <= now()
       ORDER BY puzzles.date DESC
       OFFSET ${index} LIMIT 1
     `;
@@ -326,6 +345,10 @@ export interface IndexedPuzzle {
  * One puzzle by its slug, the address the puzzles page links with and the one
  * anyone sharing a puzzle will paste. It carries `data`, since this is the one
  * caller that renders the puzzle itself.
+ *
+ * A puzzle whose moment has not arrived reads as `null`, exactly as a slug that
+ * was never used does — the page cannot tell the two apart, so a scheduled
+ * puzzle is not advertised by the difference between its 404 and a typo's.
  */
 export async function getPuzzleBySlug(slug: string): Promise<Puzzle | null> {
   if (!slug) return null;
@@ -334,7 +357,7 @@ export async function getPuzzleBySlug(slug: string): Promise<Puzzle | null> {
       SELECT ${sql.unsafe(PUZZLE_COLUMNS)}, puzzles.data
       FROM puzzles
       ${sql.unsafe(PUZZLE_JOINS)}
-      WHERE puzzles.slug = ${slug}
+      WHERE puzzles.slug = ${slug} AND puzzles.date <= now()
       LIMIT 1
     `;
     if (!rows[0]) return null;

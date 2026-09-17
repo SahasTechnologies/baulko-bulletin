@@ -88,6 +88,11 @@ Notable conventions:
 - **Puzzle `data` is generated text.** The panel's builder writes the compact
   format the public components parse; the raw view exists to fix something by
   hand. `type` must match the data.
+- **`date` is the publication switch, not just a label.** Every public read is
+  behind `date <= now()`, so a row dated in the future is absent from every
+  listing and 404s on its own page until its moment arrives. The panel marks
+  those rows “Scheduled”. See [Publication dates and
+  scheduling](#publication-dates-and-scheduling).
 - **`location`** on a submission is resolved once, as the message arrives, from
   the sender's address (ip-api). It is where the message came from, not where
   the panel is read, so rows written before the column existed show a time only.
@@ -110,6 +115,37 @@ leaves the server and each signature is scoped to one upload attempt.
 An uploaded file always gets a fresh name (`stem-ab12.jpg`): re-uploading over an
 existing name leaves ImageKit's CDN serving the old bytes at the same URL, which
 looks like the change never happened.
+
+### Replaced files are deleted
+
+Replacing or clearing a cover, a puzzle's art or an issue PDF removes the file it
+replaced from ImageKit, once the row has been saved. The panel says so in the
+confirmation, since that is the one part of a save that cannot be undone.
+
+Two things make that safe to do automatically. It only ever touches files served
+from this account's ImageKit endpoint, so a cover pasted in from somewhere else
+is never a candidate. And it checks first whether anything still points at the
+file — the same picture can be two rows' cover, or embedded in an article's body
+HTML — across every column that can hold a media URL. A file that is still
+referenced is left alone, and so is one referenced only through a `?tr=`
+transform, since the comparison is on the file's path rather than its URL.
+
+Deleting a row does **not** delete its media; that stays a deliberate manual
+step, because “delete this issue” is often “I will re-add it”.
+
+Two things to know about ImageKit's own behaviour, both measured:
+
+- **A file is not listable for about eleven seconds after upload.** The lookup
+  is by filename (the delete API takes a `fileId`, which the panel does not
+  store), so a file replaced within seconds of its own upload cannot be found and
+  stays in the bucket; the server logs `no file at <path> — nothing to delete`.
+  Everything else is old enough to be found first time.
+- **A deleted file may still be served from the CDN.** ImageKit caches on
+  request and deleting does not purge that cache, so an old cover URL can keep
+  answering for a while. Nothing on the site links to it any more.
+
+`rename-media.mjs` re-uploads files under new names, so running it orphans the
+originals — that predates this and is not cleaned up by it.
 
 ### Writing an illustrated issue or story
 
@@ -151,6 +187,39 @@ Sign in at **`/admin/login`** with `ADMIN_PASSWORD`.
 | `/admin/settings` | Site title, description, footer and the default social preview. |
 | `/admin/messages` | Contact submissions: read/unread, where each came from, delete. |
 | `/admin/contacts` | Who contact messages are emailed to, plus a test send. |
+
+### Publication dates and scheduling
+
+The publication date field takes any day. Once the day is **today or later**, a
+time box appears beneath it, and the date and time together are the moment the
+item goes live. Before that moment it is invisible: absent from the homepage,
+from `/posts`, `/extras` and `/puzzles`, and from the “puzzles in this issue”
+strip, and its own URL answers **404** — the same 404 a slug that was never used
+gets, so nothing gives away that it exists.
+
+The day counts as schedulable as well as future days, because a date-only save
+publishes from midnight: an item dated today is already live, but “we announce
+it at 3pm today” is a real thing to want, and it is only reachable if the box
+appears. A past date has nothing left to decide, so the box stays away.
+
+**Everything is Sydney time.** The day is a Sydney calendar day and the time is
+Sydney wall-clock, which is what the field's help text promises and what
+`DateComponent` renders. The conversion happens in Postgres —
+`<date> <time>::timestamp AT TIME ZONE 'Australia/Sydney'` in
+`src/lib/admin-db.ts` — rather than in JavaScript, because Sydney is +10 for
+half the year and +11 for the other half and only Postgres resolves which one
+applies to a given day. `src/lib/publish-time.ts` owns the reading half (a
+stored timestamp back into the two form values, and whether a day is still
+ahead), and it has no imports so `npm test` can run it directly.
+
+A row saved **before** this existed stores UTC midnight, which reads as 10am
+Sydney on the day it names. Both conventions display the same calendar day; the
+difference is only the hour an item becomes visible. Re-saving a row through the
+panel moves it to Sydney midnight.
+
+Because a future date hides content, the admin list marks those rows with a
+“Scheduled HH:MM” chip. Without it, an editor schedules something and then goes
+looking for it on the live site.
 
 ### HTML fields
 
@@ -239,9 +308,12 @@ to override a value you would rather not edit in place.
 values are inlined into the client bundle. The same goes for the ImageKit keys —
 the *public* key is meant to be seen, the private key is not.
 
-The ImageKit key only needs upload permission. Its media-management API is
-refused for a restricted key, which is why deleting a file (or the panel's own
-occasional test upload) happens in the ImageKit dashboard.
+The ImageKit key needs **upload and media-management** permission: the panel
+deletes a replaced cover or PDF itself, through `/v1/files` (see [Replaced files
+are deleted](#replaced-files-are-deleted)). The key in `.env` does both —
+verified against the live account — but a key restricted to uploads only still
+lets the panel work: the row saves, the deletion is logged as a failure, and the
+old file stays in the bucket. Worth checking if files start accumulating.
 
 ## Checks, CI and deploys
 
@@ -251,10 +323,17 @@ step with the source, and runs the parser tests in `src/lib/*.test.ts`.
 somebody forgot to generate, or a parser case that regressed — fails the
 deployment rather than reaching the live site.
 
-The tests cover `src/lib/puzzle-data.ts`, which is the one place stored puzzle
-text is interpreted: the three public readers and the admin's validator all run
-through it, so a wrong answer there is a wrong answer everywhere. They need no
-test framework — Node strips the types, and the module has no imports.
+The tests cover the two modules that are pure enough to test without a bundler,
+because Node's type stripping resolves neither path aliases nor packages:
+
+- `src/lib/puzzle-data.ts` — the one place stored puzzle text is interpreted.
+  The three public readers and the admin's validator all run through it, so a
+  wrong answer there is a wrong answer everywhere.
+- `src/lib/publish-time.ts` — what a publication date means. Both daylight-saving
+  switches are pinned, along with midnight, which is where a naive formatter
+  renders `24:00` and no time input will take it.
+
+Both need no test framework: they have no imports.
 
 The install command is pinned to `npm ci --include=dev`: the checker and
 TypeScript are devDependencies, and Vercel skips those when `NODE_ENV=production`

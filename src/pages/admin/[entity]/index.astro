@@ -4,7 +4,8 @@ import Flash from "@/components/admin/Flash.astro";
 import Icon from "@/components/ui/Icon.astro";
 import { ENTITIES, isEntityKey, type ContentRow } from "@/lib/admin-entities";
 import { listRows } from "@/lib/admin-db";
-import { flashFromUrl, isoToDateInput } from "@/lib/admin";
+import { flashFromUrl } from "@/lib/admin";
+import { isDue, isoToDateInput, isoToTimeInput } from "@/lib/publish-time";
 
 export const prerender = false;
 
@@ -30,6 +31,17 @@ function cell(row: ContentRow, field: string): string {
   if (field === "date") return isoToDateInput(row.date);
   const value = row[field];
   return value == null || value === "" ? "—" : value;
+}
+
+/**
+ * A row dated in the future is invisible on the site — absent from every
+ * listing and 404 on its own page — and nothing else in the panel says so. The
+ * list is where that has to be legible, or an editor schedules something and
+ * then goes looking for it on the live site.
+ */
+function scheduledFor(row: ContentRow): string | null {
+  if (isDue(row.date)) return null;
+  return `${isoToDateInput(row.date)} ${isoToTimeInput(row.date)}`;
 }
 ---
 
@@ -79,6 +91,7 @@ function cell(row: ContentRow, field: string): string {
           <tbody>
             {rows.map((row) => {
               const preview = def.publicHref(row);
+              const scheduled = scheduledFor(row);
               return (
                 <tr class="border-t border-black/10 align-middle dark:border-white/10">
                   {def.columns.map((column) => (
@@ -87,6 +100,18 @@ function cell(row: ContentRow, field: string): string {
                         <a href={`${base}/${row.id}`} class="font-semibold hover:underline">
                           {cell(row, "title")}
                         </a>
+                      ) : column.field === "date" ? (
+                        <span class="opacity-80">
+                          {cell(row, column.field)}
+                          {scheduled && (
+                            <span
+                              class="ml-2 whitespace-nowrap rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-300"
+                              title={`Not on the site until ${scheduled} Sydney`}
+                            >
+                              Scheduled {scheduled.slice(11)}
+                            </span>
+                          )}
+                        </span>
                       ) : (
                         <span class="opacity-80">{cell(row, column.field)}</span>
                       )}

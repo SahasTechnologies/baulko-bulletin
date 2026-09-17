@@ -168,6 +168,17 @@ export interface SaveResult {
  * Creates (id === null) or updates one content row. Only the columns declared
  * for that entity are written, so fields the admin doesn't edit — such as
  * `author_id` on posts — are never clobbered.
+ *
+ * `values.date` arrives as a Sydney wall clock reading (`YYYY-MM-DD HH:MM`,
+ * assembled in `lib/admin.ts`), and the cast below is what turns it into a
+ * moment. The timezone is named in the SQL rather than computed in JavaScript
+ * because Sydney is +10 for half the year and +11 for the other half, and only
+ * Postgres resolves which one applies to a given day — a fixed offset here
+ * would put every summer publication an hour out.
+ *
+ * This column is also the publication switch: the public reads in `lib/db.ts`
+ * only return a row whose date has arrived, so a moment in the future is a row
+ * that exists in the panel and nowhere else.
  */
 export async function saveRow(
   key: EntityKey,
@@ -190,7 +201,7 @@ export async function saveRow(
         UPDATE posts SET
           title = ${title}, slug = ${slug}, excerpt = ${excerpt}, content = ${content},
           cover_image_url = ${coverUrl}, cover_image_alt = ${coverAlt},
-          date = ${date}::timestamptz, pdf_url = ${pdfUrl}
+          date = ${date}::timestamp AT TIME ZONE 'Australia/Sydney', pdf_url = ${pdfUrl}
         WHERE id = ${id}::uuid
       `;
       return { id, slug };
@@ -200,7 +211,7 @@ export async function saveRow(
     const created = await sql`
       INSERT INTO posts (title, slug, excerpt, content, cover_image_url, cover_image_alt, date, pdf_url, author_id)
       VALUES (${title}, ${slug}, ${excerpt}, ${content}, ${coverUrl}, ${coverAlt},
-              ${date}::timestamptz, ${pdfUrl}, ${authorId}::uuid)
+              ${date}::timestamp AT TIME ZONE 'Australia/Sydney', ${pdfUrl}, ${authorId}::uuid)
       RETURNING id
     `;
     return { id: String((created[0] as { id: unknown }).id), slug };
@@ -214,7 +225,7 @@ export async function saveRow(
         UPDATE extras SET
           title = ${title}, slug = ${slug}, excerpt = ${excerpt}, content = ${content},
           cover_image_url = ${coverUrl}, cover_image_alt = ${coverAlt},
-          date = ${date}::timestamptz, author_id = ${authorId}::uuid
+          date = ${date}::timestamp AT TIME ZONE 'Australia/Sydney', author_id = ${authorId}::uuid
         WHERE id = ${id}::uuid
       `;
       return { id, slug };
@@ -222,7 +233,7 @@ export async function saveRow(
     const created = await sql`
       INSERT INTO extras (title, slug, excerpt, content, cover_image_url, cover_image_alt, date, author_id)
       VALUES (${title}, ${slug}, ${excerpt}, ${content}, ${coverUrl}, ${coverAlt},
-              ${date}::timestamptz, ${authorId}::uuid)
+              ${date}::timestamp AT TIME ZONE 'Australia/Sydney', ${authorId}::uuid)
       RETURNING id
     `;
     return { id: String((created[0] as { id: unknown }).id), slug };
@@ -238,7 +249,7 @@ export async function saveRow(
     await sql`
       UPDATE puzzles SET
         title = ${title}, slug = ${slug}, type = ${type}, data = ${data},
-        cover_image_url = ${coverUrl}, date = ${date}::timestamptz,
+        cover_image_url = ${coverUrl}, date = ${date}::timestamp AT TIME ZONE 'Australia/Sydney',
         author_id = ${authorId}::uuid, post_id = ${postId}::uuid
       WHERE id = ${id}::uuid
     `;
@@ -246,7 +257,7 @@ export async function saveRow(
   }
   const created = await sql`
     INSERT INTO puzzles (title, slug, type, data, cover_image_url, date, author_id, post_id)
-    VALUES (${title}, ${slug}, ${type}, ${data}, ${coverUrl}, ${date}::timestamptz,
+    VALUES (${title}, ${slug}, ${type}, ${data}, ${coverUrl}, ${date}::timestamp AT TIME ZONE 'Australia/Sydney',
             ${authorId}::uuid, ${postId}::uuid)
     RETURNING id
   `;
@@ -267,6 +278,47 @@ export async function deleteRow(key: EntityKey, id: string): Promise<boolean> {
 
 export function entityUsesSlug(key: EntityKey): boolean {
   return HAS_SLUG[key];
+}
+
+/**
+ * How many rows still point at a media file, anywhere on the site.
+ *
+ * Takes the file's *path* rather than its full URL, because the same file is
+ * referred to with and without an ImageKit transform query (`?tr=w-1000`) and
+ * the path is the part every form of the URL has in common.
+ *
+ * Body copy counts as much as a cover. A picture uploaded into an article is
+ * embedded as a `<figure>` with the URL inside it, so a file that no cover
+ * column mentions can still be the only copy of an illustration in a story —
+ * and `settings.footer_html` and `pages.body_html` are edited the same way.
+ *
+ * The path is escaped before it reaches the LIKE. `_` and `%` are wildcards to
+ * SQL, and although the panel slugifies the filenames it uploads, an editor can
+ * paste any URL they like into a media field.
+ */
+export async function countMediaReferences(path: string): Promise<number> {
+  const sql = sqlClient();
+  const pattern = `%${path.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const rows = await sql`
+    SELECT (
+      (SELECT count(*) FROM posts
+        WHERE cover_image_url LIKE ${pattern}
+           OR pdf_url LIKE ${pattern}
+           OR content LIKE ${pattern}) +
+      (SELECT count(*) FROM extras
+        WHERE cover_image_url LIKE ${pattern}
+           OR content LIKE ${pattern}) +
+      (SELECT count(*) FROM puzzles
+        WHERE cover_image_url LIKE ${pattern}) +
+      (SELECT count(*) FROM pages
+        WHERE og_image_url LIKE ${pattern}
+           OR body_html LIKE ${pattern}) +
+      (SELECT count(*) FROM settings
+        WHERE og_image_url LIKE ${pattern}
+           OR footer_html LIKE ${pattern})
+    )::int AS n
+  `;
+  return Number((rows[0] as { n?: unknown })?.n ?? 0);
 }
 
 /* ------------------------------------------------------- dashboard + meta */

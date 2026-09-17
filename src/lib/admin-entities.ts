@@ -11,6 +11,14 @@
 
 export type EntityKey = "posts" | "extras" | "puzzles";
 
+/**
+ * The publication date every content type shares. The time box below it only
+ * appears for a date of today or later, so the wording has to explain what a
+ * future moment does — this is the only documentation an editor gets.
+ */
+const PUBLICATION_DATE_HELP =
+  "Sydney time. A date of today or later also offers a publish time: until that moment the item is hidden from every listing and its page returns a 404. A date with no time publishes from midnight.";
+
 export type FieldName =
   | "title"
   | "slug"
@@ -93,7 +101,7 @@ const posts: EntityDef = {
       placeholder: "n-33",
       help: "The URL becomes /posts/<slug>. Leave blank to derive it from the title.",
     },
-    { name: "date", label: "Publication date", type: "date", required: true, help: "Shown in Sydney time." },
+    { name: "date", label: "Publication date", type: "date", required: true, help: PUBLICATION_DATE_HELP },
     { name: "excerpt", label: "Excerpt", type: "textarea", rows: 3, help: "Short summary used on cards and previews." },
     {
       name: "pdf_url",
@@ -140,7 +148,7 @@ const extras: EntityDef = {
       type: "text",
       help: "The URL becomes /extras/<slug>. Leave blank to derive it from the title.",
     },
-    { name: "date", label: "Publication date", type: "date", required: true, help: "Shown in Sydney time." },
+    { name: "date", label: "Publication date", type: "date", required: true, help: PUBLICATION_DATE_HELP },
     {
       name: "author_name",
       label: "Author",
@@ -196,7 +204,7 @@ const puzzles: EntityDef = {
       options: ["Crossword", "Find-A-Word", "Unscramble"],
       help: "Must match the data below — it decides which interactive component renders.",
     },
-    { name: "date", label: "Publication date", type: "date", required: true, help: "Shown in Sydney time." },
+    { name: "date", label: "Publication date", type: "date", required: true, help: PUBLICATION_DATE_HELP },
     { name: "author_name", label: "Author", type: "text", help: "Blank shows “Anonymous”." },
     {
       name: "post_id",

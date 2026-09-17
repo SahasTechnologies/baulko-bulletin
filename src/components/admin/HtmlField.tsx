@@ -19,7 +19,7 @@
  * prose styles an article body uses.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import Icon from "@/components/ui/Icon";
 import { tokenizeHtml, type HtmlTokenKind } from "@/lib/html-highlight";
@@ -57,6 +57,8 @@ export default function HtmlField({
   const [value, setValue] = useState(initial);
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const tokens = useMemo(() => tokenizeHtml(value), [value]);
 
   /**
    * Fits the field to its text. `rows` is a floor rather than the size: the
@@ -123,14 +125,19 @@ export default function HtmlField({
       <div className={tab === "edit" ? "" : "hidden"}>
         <div className="relative overflow-hidden rounded-xl border border-black/15 bg-white focus-within:ring-2 focus-within:ring-black/30 dark:border-white/15 dark:bg-neutral-900 dark:focus-within:ring-white/30">
           <pre aria-hidden="true" className="html-code pointer-events-none absolute inset-0 overflow-hidden">
-            {tokenizeHtml(value).map((token, index) => (
+            {tokens.map((token, index) => (
               <span key={index} className={TOKEN_CLASS[token.kind]}>
                 {token.text}
               </span>
             ))}
             {/* A trailing newline joins the last line in a `pre`, which would
-                leave the colours a line short of the textarea. */}
-            {"\n"}
+                leave the colours a line short of the textarea.
+                Only when there is a line above it, though: an HTML parser
+                drops the first newline inside a `<pre>`, so on an empty field
+                this was the *first* child, the browser discarded it, and React
+                found one text node fewer than it had rendered — a hydration
+                mismatch that regenerated this subtree on every page load. */}
+            {tokens.length > 0 && "\n"}
           </pre>
           <textarea
             ref={textareaRef}

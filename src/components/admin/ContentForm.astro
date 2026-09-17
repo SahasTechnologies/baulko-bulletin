@@ -3,7 +3,9 @@ import Icon from "@/components/ui/Icon.astro";
 import HtmlField from "@/components/admin/HtmlField";
 import MediaField from "@/components/admin/MediaField";
 import PuzzleDataEditor from "@/components/admin/PuzzleDataEditor";
-import { escapeHtml, isoToDateInput, maxLengthFor } from "@/lib/admin";
+import PublishTime from "@/components/admin/PublishTime";
+import { escapeHtml, maxLengthFor } from "@/lib/admin";
+import { isoToDateInput, isoToTimeInput, sydneyToday } from "@/lib/publish-time";
 import type { ContentRow, EntityDef } from "@/lib/admin-entities";
 
 interface Props {
@@ -27,6 +29,12 @@ function valueFor(name: string): string {
   if (name === "date") return isoToDateInput(row?.date);
   return row?.[name] ?? "";
 }
+
+// The time box beside the date follows the date field, so it is told what the
+// stored moment was. "Today" comes from the server so the first client render
+// agrees with the HTML it hydrates.
+const storedTime = isoToTimeInput(row?.date);
+const today = sydneyToday();
 
 // The puzzle builder follows the type select, so it needs to know what is
 // selected before the editor is ever touched.
@@ -131,6 +139,19 @@ function isFull(field: { full?: boolean; type: string }): boolean {
               list={field.name === "author_name" && authorNames.length ? "admin-author-names" : undefined}
               autocomplete={field.name === "author_name" ? "off" : undefined}
               class={inputClass}
+            />
+          )}
+
+          {/* The publication moment. The date above stays a plain input so it
+              works without this script; the time beside it only exists while
+              there is still a moment left to choose. */}
+          {field.type === "date" && (
+            <PublishTime
+              client:load
+              dateFieldId={id}
+              initialDate={value}
+              initialTime={storedTime}
+              today={today}
             />
           )}
 
