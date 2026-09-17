@@ -399,6 +399,46 @@ button:not(:disabled):active {
   text-underline-offset: 4px;
 }
 
+/* The reader's fullscreen presentation. The panel is the element that is asked
+   to go fullscreen, so this is where it is told to own the screen: a column
+   that centres its contents, squared off, and opaque.
+
+   Opaque matters, in both themes. The panel's background is otherwise
+   translucent (`bg-neutral-200/80`) so the page shows through it, and behind a
+   fullscreen element is the browser's black backdrop — a light panel over black
+   reads as grey. That is why the colour is set here rather than as a
+   `fullscreen:bg-…` utility: such a utility outranks `dark:bg-neutral-900`
+   (that variant's `:where()` contributes no specificity), which painted a light
+   panel in the dark theme, and `dark:fullscreen:bg-…` only ties with it and
+   leaves the outcome to source order. Here the dark rule simply outranks the
+   light one.
+
+   No width, deliberately: the UA already gives a fullscreen element
+   `width: 100%`, which is the viewport less the scrollbar gutter this site
+   reserves. `100vw` would be that gutter wider and scroll sideways. The height
+   is set because a flex column with `justify-content: center` needs a definite
+   one, and in fullscreen the viewport height is the right answer.
+
+   The prefixed pseudo-class is for Safari before 16.4, which is also the Safari
+   old enough to be running the legacy pdf.js build — the same browsers the
+   reader goes out of its way to support. There, `webkitRequestFullscreen` puts
+   the panel on the screen but `:fullscreen` never matches it, so without this
+   it would arrive with its rounded corners and its translucent background. */
+.pdfPanel:fullscreen,
+.pdfPanel:-webkit-full-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100vh;
+  border-radius: 0;
+  background-color: var(--color-neutral-200);
+}
+
+.dark .pdfPanel:fullscreen,
+.dark .pdfPanel:-webkit-full-screen {
+  background-color: var(--color-neutral-900);
+}
+
 /* Loading circle shown while a download is being fetched. */
 .pdfSpinner {
   width: 1.05em;
