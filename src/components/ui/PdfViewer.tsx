@@ -122,6 +122,33 @@ function isCancellation(err: unknown) {
 }
 
 /**
+ * The fullscreen API in whichever spelling this browser has. Safari prefixed it
+ * until 16.4 and still answers to the prefixed names, so both are read here and
+ * nowhere else.
+ */
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+};
+
+type FullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
+/** The element currently fullscreen, or null. */
+function fullscreenElement(): Element | null {
+  const doc = document as FullscreenDocument;
+  return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+}
+
+/** Whether this browser can put an element fullscreen at all. */
+function canGoFullscreen(el: HTMLElement | null): boolean {
+  if (!el) return false;
+  const prefixed = el as FullscreenElement;
+  return !!(el.requestFullscreen || prefixed.webkitRequestFullscreen);
+}
+
+/**
  * Fetches the issue into memory, reporting how far along it is.
  *
  * Reading a 9 MB issue used to fetch it page by page as you flipped: pdf.js's
@@ -222,6 +249,7 @@ function megabytes(bytes: number): string {
 }
 
 export default function PdfViewer({ src, title }: { src: string; title?: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const leftWrapRef = useRef<HTMLDivElement>(null);
   const rightWrapRef = useRef<HTMLDivElement>(null);
@@ -263,6 +291,13 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   // screen — a small overlay covers the gap until it lands.
   const [pending, setPending] = useState(false);
   const [stageW, setStageW] = useState(0);
+  // The viewport's height, tracked as state for the same reason the width is:
+  // the render loop's fit reads it, and it is not only the window a reader can
+  // resize. Going fullscreen in a maximised window changes *only* the height —
+  // the width was already the screen's — so with the fit reading
+  // `window.innerHeight` directly there would be nothing to tell it the pages
+  // should be bigger than they were.
+  const [viewportH, setViewportH] = useState(0);
   // Bumped every time a page lands in the cache, so the stage re-checks it.
   const [tick, setTick] = useState(0);
   // Bytes of the issue downloaded so far, and the size the response claimed
@@ -276,6 +311,11 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   const [shareOpen, setShareOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // Whether the reader owns the whole screen, and whether this browser can be
+  // asked for it — iPhone Safari cannot put an element fullscreen, and a button
+  // that does nothing is worse than no button.
+  const [fullscreen, setFullscreen] = useState(false);
+  const [canFullscreen, setCanFullscreen] = useState(false);
 
   // Two pages side by side only when there's room for both.
   useEffect(() => {
@@ -292,7 +332,10 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
-    const measure = () => setStageW((w) => (el.clientWidth === w ? w : el.clientWidth));
+    const measure = () => {
+      setStageW((w) => (el.clientWidth === w ? w : el.clientWidth));
+      setViewportH((h) => (window.innerHeight === h ? h : window.innerHeight));
+    };
     // Measure once up front rather than waiting for the observer's first
     // callback: ResizeObserver delivers during the rendering steps, which a
     // background, minimised or occluded tab suspends — and stage width gates
@@ -404,11 +447,19 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
   // cache dropped) whenever the scale context changes, since cached pages are
   // rasterized for one exact size.
   useEffect(() => {
-    if (!pdf || !stageW || !pdfjsRef.current) return;
+    if (!pdf || !stageW || !viewportH || !pdfjsRef.current) return;
     const gen = ++genRef.current;
     cacheRef.current.clear();
 
-    const maxH = Math.min(window.innerHeight * 0.78, 980);
+    // The fit is against the height available, which fullscreen changes — hence
+    // `viewportH` in the dependency list below, since a height change is the
+    // one thing the stage's own width cannot report.
+    //
+    // The 0.78 leaves room for the toolbar and the panel's own padding under
+    // the pages. In fullscreen that has to fit the whole screen: 0.78H + 156px
+    // of chrome is within H for any screen taller than ~710px, which is every
+    // screen a browser runs on.
+    const maxH = Math.min(viewportH * 0.78, 980);
     // Lookahead pages at the raw device ratio would multiply canvas memory by
     // up to 9 on a 3x phone for no visible gain — 2 is the usual ceiling.
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -547,7 +598,7 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
       inFlightRef.current?.cancel();
       inFlightRef.current = null;
     };
-  }, [pdf, spread, stageW, numPages]);
+  }, [pdf, spread, stageW, viewportH, numPages]);
 
   // Mount whichever visible pages are already rendered. If one is still
   // rendering, whatever was on screen stays there (no flash on resize or
@@ -643,6 +694,20 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     return () => document.removeEventListener("mousedown", onDown);
   }, [shareOpen]);
 
+  // Fullscreen is the browser's state, not ours: Esc, F11 and the browser's own
+  // exit button all leave it without telling us, so the button follows
+  // `fullscreenchange` rather than the click that started it.
+  useEffect(() => {
+    setCanFullscreen(canGoFullscreen(containerRef.current));
+    const sync = () => setFullscreen(fullscreenElement() === containerRef.current);
+    document.addEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync);
+    return () => {
+      document.removeEventListener("fullscreenchange", sync);
+      document.removeEventListener("webkitfullscreenchange", sync);
+    };
+  }, []);
+
   const pages = spreadPages(page, numPages, spread);
   const first = pages[0] || 1;
   const label = pages.length === 2 ? `${pages[0]}–${pages[1]} / ${numPages}` : `${first} / ${numPages || "…"}`;
@@ -706,6 +771,32 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     }
   }
 
+  /**
+   * Asks the browser for the whole screen, or gives it back.
+   *
+   * Only ever a request: what the button then says comes from
+   * `fullscreenchange`, so a refusal leaves it showing what is actually true
+   * rather than what was clicked. A browser can refuse — an iframe without
+   * `allow="fullscreen"`, or a gesture it does not accept — which is worth a
+   * line in the console instead of a silent no-op.
+   */
+  async function toggleFullscreen() {
+    const el = containerRef.current as FullscreenElement | null;
+    if (!el) return;
+    const doc = document as FullscreenDocument;
+    try {
+      if (fullscreenElement()) {
+        if (doc.exitFullscreen) await doc.exitFullscreen();
+        else await doc.webkitExitFullscreen?.();
+        return;
+      }
+      if (el.requestFullscreen) await el.requestFullscreen();
+      else await el.webkitRequestFullscreen?.();
+    } catch (err) {
+      console.warn("[pdf] the browser refused to go fullscreen:", err);
+    }
+  }
+
   /** Clears the once-only guard, so the reload below is allowed to have been
    *  the first one — this is the reader asking for it by hand. */
   function reloadPage() {
@@ -731,7 +822,15 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
     "relative shrink-0 overflow-hidden bg-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]";
 
   return (
-    <div className="relative rounded-3xl bg-neutral-200/80 px-3 py-6 dark:bg-neutral-900 md:px-8 md:py-10">
+    // The panel is what goes fullscreen, so the reader owns the screen rather
+    // than the page keeping its nav and its footer around it. What fullscreen
+    // then looks like is `.pdfPanel:fullscreen` in global.css, next to the
+    // reader's other rules — the theme's own colours are involved there, and
+    // that is not something a utility can get right (see the note on it).
+    <div
+      ref={containerRef}
+      className="pdfPanel relative rounded-3xl bg-neutral-200/80 px-3 py-6 dark:bg-neutral-900 md:px-8 md:py-10"
+    >
       {(loading || (!error && !ready)) && (
         <div
           className="flex min-h-[60vh] flex-col items-center justify-center gap-4"
@@ -905,6 +1004,22 @@ export default function PdfViewer({ src, title }: { src: string; title?: string 
               <Icon name="download" />
             )}
           </button>
+
+          {/* Offered only where the browser can do it: iPhone Safari cannot put
+              an element fullscreen, and a button that does nothing is worse
+              than no button. The label stays put and `aria-pressed` carries the
+              state, so it reads the same to a screen reader either way. */}
+          {canFullscreen && (
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className={iconButton}
+              aria-label="Read fullscreen"
+              aria-pressed={fullscreen}
+            >
+              <Icon name={fullscreen ? "contract" : "expand"} />
+            </button>
+          )}
 
           {shareOpen && (
             <div className="absolute bottom-14 right-0 z-20 w-[min(20rem,80vw)] rounded-2xl border border-black/10 bg-white p-4 text-left shadow-xl dark:border-white/15 dark:bg-neutral-800">
