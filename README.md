@@ -4,8 +4,8 @@ Student newspaper of Baulkham Hills High School.
 Visit [baulkobulletin.com](https://baulkobulletin.com).
 
 A single Astro app serves the public site and the staff panel that fills it. All
-copy — issues, extras, puzzles, page bodies and the footer — lives in Postgres,
-and every picture and PDF lives on ImageKit. There is no CMS database, no
+copy — issues, extras, puzzles and page bodies — lives in Postgres, and every
+picture and PDF lives on ImageKit. There is no CMS database, no
 Markdown and no build step between typing in the panel and the page changing.
 
 ## Stack
@@ -184,7 +184,7 @@ Sign in at **`/admin/login`** with `ADMIN_PASSWORD`.
 | `/admin/extras` | Extras — stories, poetry, illustrations, with an author. |
 | `/admin/puzzles` | Crosswords, find-a-words and unscrambles. |
 | `/admin/pages` | The About, FAQ and Join page bodies. |
-| `/admin/settings` | Site title, description, footer and the default social preview. |
+| `/admin/settings` | Site title, description and the default social preview. |
 | `/admin/messages` | Contact submissions: read/unread, where each came from, delete. |
 | `/admin/contacts` | Who contact messages are emailed to, plus a test send. |
 
@@ -223,8 +223,10 @@ looking for it on the live site.
 
 ### HTML fields
 
-Every field that stores HTML — an issue's or extra's content, a page body, the
-footer — is edited in a source editor with **Edit** and **Preview** tabs.
+Every field that stores HTML — an issue's or extra's content, a page body — is
+edited in a source editor with **Edit** and **Preview** tabs, and the source box
+grows with the copy up to a ceiling before it scrolls inside itself, so a long
+body cannot push the Save button a screenful down the page.
 Preview renders the markup the way the site will, in the same prose styles an
 article uses, so a heading or a figure can be checked without saving first.
 Edit colours the source after Visual Studio Code's own default themes (Light+
@@ -378,9 +380,9 @@ network connection; the committed file is what builds.
   photographed against a light backdrop leaves behind. Add `--write` to upload
   the result and repoint the row, `--index` to survey every cover.
 - `tools/make-logo-dark.mjs` — derives `public/bulletin-dark.png` from
-  `public/bulletin.png`, for the dark page: the black outline becomes a light
-  orange, the orange the artwork is drawn in becomes a brighter one, and the
-  transparent cut-outs the drawing encloses become white. `--color` and
-  `--orange` set those two oranges. `Logo.astro` shows one file or the other
+  `public/bulletin.png`, for the dark page: the black outline becomes a dark
+  orange (`#C2410C`), the orange the artwork is drawn in becomes a brighter one
+  (`#FF9C4A`), and the transparent cut-outs the drawing encloses become white.
+  `--color` and `--orange` set those two oranges. `Logo.astro` shows one file or the other
   through the `dark` class on `<html>`; re-run the tool after replacing the
   light logo.

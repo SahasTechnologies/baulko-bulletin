@@ -6,8 +6,9 @@
  * page that black disappears into the background, so this writes a second file
  * — `public/bulletin-dark.png` — in which:
  *
- *   - black (and every neutral from black up to white) is ramped to a light
- *     orange, so the outline and the shapes inside it stay readable;
+ *   - black (and every neutral from black up to white) is ramped to a dark
+ *     orange, so the outline and the shapes inside it stay readable without
+ *     shouting off a near-black page;
  *   - the artwork's own orange — a mid, saturated orange that is close in
  *     brightness to the dark page — becomes a brighter, lighter one;
  *   - transparent pixels *enclosed* by the artwork become white, so the
@@ -21,7 +22,7 @@
  * Usage:
  *   node tools/make-logo-dark.mjs                     # write public/bulletin-dark.png
  *   node tools/make-logo-dark.mjs --out other.png     # somewhere else
- *   node tools/make-logo-dark.mjs --color '#FFD9B3'   # what the black becomes
+ *   node tools/make-logo-dark.mjs --color '#C2410C'   # what the black becomes
  *   node tools/make-logo-dark.mjs --orange '#FF9C4A'  # what the orange becomes
  *
  * Re-run it after replacing public/bulletin.png.
@@ -51,10 +52,14 @@ function argValue(name, fallback) {
 const SOURCE = argValue("--source", "public/bulletin.png");
 const OUTPUT = argValue("--out", "public/bulletin-dark.png");
 /**
- * What black becomes. A pale, warm orange, because on a near-black page the
- * outline is often the only thing separating one shape from the next.
+ * What black becomes: a deep orange.
+ *
+ * It is the outline — the thing separating one shape from the next — so it has
+ * to read against a near-black page, but a pale tint of the fill's orange made
+ * the whole mark look washed out at tile size. Darker than the artwork's own
+ * orange, which is the brighter of the two once this has run.
  */
-const LIGHT_ORANGE = argValue("--color", "#FFD9B3");
+const OUTLINE_ORANGE = argValue("--color", "#C2410C");
 /**
  * What the artwork's own orange becomes. The #E08040 it is drawn in is close to
  * the dark page in brightness, so it is replaced with a brighter one — and one
@@ -160,7 +165,7 @@ function dilate(mask, width, height, radius) {
   return current;
 }
 
-const [orangeR, orangeG, orangeB] = hexToRgb(LIGHT_ORANGE);
+const [orangeR, orangeG, orangeB] = hexToRgb(OUTLINE_ORANGE);
 const [fillR, fillG, fillB] = hexToRgb(FILL_ORANGE);
 
 const source = await sharp(resolve(SOURCE)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -237,7 +242,7 @@ const size = (bytes) => `${Math.round(bytes / 1024)}KB`;
 console.log(
   `logo  ${SOURCE} → ${OUTPUT} (${width}x${height})\n` +
     `      ${filled} px of enclosed transparency filled white, ` +
-    `${recoloured} neutral px ramped to ${LIGHT_ORANGE}, ` +
+    `${recoloured} neutral px ramped to ${OUTLINE_ORANGE}, ` +
     `${filledOrange} warm px replaced with ${FILL_ORANGE}\n` +
     `      ${size(readFileSync(resolve(SOURCE)).length)} → ${size(output.length)}`
 );
