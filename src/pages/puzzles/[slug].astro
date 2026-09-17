@@ -25,7 +25,13 @@ if (slug !== undefined && /^\d+$/.test(slug)) {
 const puzzle = await getPuzzleBySlug(slug ?? "");
 
 if (!puzzle) {
-  return Astro.redirect("/puzzles");
+  // A real 404, as posts and extras already serve. A puzzle whose publication
+  // moment has not arrived reads as missing here, so it has to answer the same
+  // way a slug that was never used does — redirecting to /puzzles would reply
+  // differently for a slug that exists and one that does not, which is a way of
+  // announcing content that is not public yet.
+  Astro.response.status = 404;
+  return Astro.rewrite("/404");
 }
 
 const article = puzzle.type === "Unscramble" ? "an" : "a";

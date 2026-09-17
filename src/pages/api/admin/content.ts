@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { ENTITIES, isEntityKey } from "@/lib/admin-entities";
-import { deleteRow, entityUsesSlug, isUuid, saveRow } from "@/lib/admin-db";
+import { deleteRow, entityUsesSlug, getRow, isUuid, saveRow } from "@/lib/admin-db";
+import { releaseReplacedMedia } from "@/lib/media-cleanup";
 import {
   csrfOk,
   flashTo,
@@ -74,14 +75,31 @@ export const POST: APIRoute = async ({ request }) => {
     const { values, error } = validateEntityForm(def, form);
     if (error) return flashTo(returnTo, "error", error);
 
+    // Read the row before it is written, so the media it used to point at is
+    // known. `saveRow` overwrites the URL and the old one is then unrecoverable
+    // from the database.
+    const before = editing ? await getRow(def.key, id) : null;
+
     const saved = await saveRow(def.key, editing ? id : null, {
       ...values,
       slug: entityUsesSlug(def.key) ? resolvedSlug(values) : "",
     });
+
+    // The row is saved; from here on nothing may fail the request. A replaced
+    // cover or PDF is removed from ImageKit unless something else still points
+    // at it, and the editor is told when a file actually went, since that is
+    // the one part of this they cannot undo.
+    const released = await releaseReplacedMedia(before, values);
+    const removed = released.deleted.length
+      ? released.deleted.length === 1
+        ? " The file it replaced was deleted from ImageKit."
+        : ` The ${released.deleted.length} files it replaced were deleted from ImageKit.`
+      : "";
+
     return flashTo(
       `${base}/${saved.id}`,
       "ok",
-      editing ? `${def.singular} updated.` : `${def.singular} created.`
+      `${editing ? `${def.singular} updated.` : `${def.singular} created.`}${removed}`
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

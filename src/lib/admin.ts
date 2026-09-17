@@ -12,6 +12,7 @@ import type { AdminSession } from "@/lib/auth";
 import { requestSession, verifyCsrf } from "@/lib/auth";
 import type { EntityDef, FieldDef, FieldName } from "@/lib/admin-entities";
 import { formatPuzzleProblems, parsePuzzleData } from "@/lib/puzzle-data";
+import { combineDateTime, isDateInput, isTimeInput } from "@/lib/publish-time";
 
 /** Defence in depth: middleware also gates these routes. */
 export async function requireAdmin(request: Request): Promise<AdminSession | null> {
@@ -125,31 +126,14 @@ function isAllowedUrl(value: string): boolean {
 }
 
 /**
- * Dates are edited as calendar days and read back as Sydney days, which is the
- * timezone DateComponent renders in. Storing UTC midnight keeps the day the
- * editor picked identical to the day readers see.
+ * Dates and times are edited as Sydney wall clock and read back the same way —
+ * see `lib/publish-time.ts`, which owns that conversion and is the only place
+ * the timezone is named. What is left here is the shape of the submission: a
+ * date field arrives as `YYYY-MM-DD` and, when the editor set one, the moment
+ * they want it live arrives beside it as `HH:MM`. The two are combined into the
+ * one stamp `admin-db` stores.
  */
-export function dateInputToIso(value: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString();
-}
-
-const sydneyDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  timeZone: "Australia/Sydney",
-});
-
-/** ISO timestamp → `YYYY-MM-DD` as seen in Sydney, for prefilling date inputs. */
-export function isoToDateInput(value: string | null | undefined): string {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return sydneyDateFormatter.format(parsed);
-}
+const PUBLISH_TIME_FIELD = "time";
 
 /** Same shape `admin-db` accepts, repeated here so validation has no database import. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -193,8 +177,22 @@ export function validateEntityForm(def: EntityDef, form: FormData): ValidatedVal
     if ((field.type === "url" || field.type === "image" || field.type === "pdf") && !isAllowedUrl(value)) {
       return { values, error: `${field.label} must be a full http(s) URL or a path starting with "/".` };
     }
-    if (field.type === "date" && !dateInputToIso(value)) {
-      return { values, error: `${field.label} must be a valid date.` };
+    // A publication date carries the moment it goes live. The date is a Sydney
+    // calendar day and the time beside it is Sydney wall clock; the two are
+    // combined here so nothing downstream has to know they arrived separately,
+    // and a date with no time means midnight — published from the start of the
+    // day the editor picked.
+    if (field.type === "date") {
+      if (!isDateInput(value)) {
+        return { values, error: `${field.label} must be a valid date.` };
+      }
+      const rawTime = form.get(PUBLISH_TIME_FIELD);
+      const time = typeof rawTime === "string" ? rawTime.trim() : "";
+      if (time && !isTimeInput(time)) {
+        return { values, error: "Publish time must be a time of day, such as 08:00." };
+      }
+      values[field.name] = combineDateTime(value, time);
+      continue;
     }
     if (field.type === "issue" && !UUID_RE.test(value)) {
       return { values, error: `${field.label} must be one of the listed issues.` };
