@@ -32,6 +32,18 @@ const SPELLED = "nav-spelled";
 /** Opens every label for one frame, so the cells can be measured. */
 const MEASURING = "nav-measuring";
 
+/**
+ * Holds every label's own transition off for the length of a fit.
+ *
+ * Measuring opens the labels and putting them back is a style change, so with
+ * their transitions live each resize step restarted four of them on every
+ * label: a window dragged in width — or dragged at all, since a resize event
+ * says nothing about which edge moved — made the header's text re-animate over
+ * and over with nothing changing shape. The class is what the CSS hangs
+ * `transition: none` on for the duration.
+ */
+const FITTING = "nav-fitting";
+
 /** Spare room a rower shape needs before the tighter one takes over, in px. */
 const SLACK = 24;
 
@@ -46,6 +58,26 @@ interface Cell {
 }
 
 let pointer: MediaQueryList | null = null;
+
+/**
+ * The frame scheduled to take `FITTING` back off, so a burst of resizes keeps
+ * one timer rather than one per call — and so the class is removed a frame
+ * *after* the fit put the styles back, which is what makes the removal itself
+ * unable to start a transition.
+ */
+let fittingFrame = 0;
+
+/**
+ * Mutes the labels for the fit that is about to run. Called at the top of every
+ * `updateNavFit` — including the ones that return early, since those remove the
+ * shape classes too — and undone on the next frame.
+ */
+function muteLabels(): void {
+  const root = document.documentElement;
+  root.classList.add(FITTING);
+  cancelAnimationFrame(fittingFrame);
+  fittingFrame = requestAnimationFrame(() => root.classList.remove(FITTING));
+}
 
 /** One nav's measurements, taken in one pass so the classes can be put back. */
 interface Plan {
@@ -149,6 +181,10 @@ function roomFor(nav: HTMLElement): number {
 export function updateNavFit(): void {
   const root = document.documentElement;
   pointer ??= window.matchMedia(HOVER_QUERY);
+
+  // Before anything touches the labels: every branch below changes their styles
+  // — the early return included — and none of it is motion worth watching.
+  muteLabels();
 
   const rows = navs();
   if (!rows.length || !pointer.matches) {

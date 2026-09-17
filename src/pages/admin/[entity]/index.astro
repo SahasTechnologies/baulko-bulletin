@@ -43,6 +43,17 @@ function scheduledFor(row: ContentRow): string | null {
   if (isDue(row.date)) return null;
   return `${isoToDateInput(row.date)} ${isoToTimeInput(row.date)}`;
 }
+
+/**
+ * The row's actions are icons rather than words — three words per row read as a
+ * paragraph of links down the side of a table. Each one keeps its own
+ * `aria-label`, because an inline icon is hidden from assistive technology (see
+ * `components/ui/Icon.astro`) and an unlabelled button says nothing.
+ */
+const actionClass =
+  "inline-flex size-9 items-center justify-center rounded-full border border-black/15 text-lg transition-transform hover:scale-110 dark:border-white/15";
+const deleteClass =
+  "inline-flex size-9 items-center justify-center rounded-full border border-red-500/40 text-lg text-red-700 transition-transform hover:scale-110 dark:text-red-400";
 ---
 
 <AdminLayout title={def.plural} current={base}>
@@ -118,18 +129,25 @@ function scheduledFor(row: ContentRow): string | null {
                     </td>
                   ))}
                   <td class="px-5 py-4">
-                    <div class="flex items-center gap-4 whitespace-nowrap">
-                      <a href={`${base}/${row.id}`} class="underline underline-offset-4">
-                        Edit
+                    <div class="flex items-center gap-2 whitespace-nowrap">
+                      <a
+                        href={`${base}/${row.id}`}
+                        class={actionClass}
+                        title={`Edit ${cell(row, "title")}`}
+                        aria-label={`Edit ${cell(row, "title")}`}
+                      >
+                        <Icon name="create-outline" />
                       </a>
                       {preview && (
                         <a
                           href={preview}
                           target="_blank"
                           rel="noreferrer"
-                          class="underline underline-offset-4 opacity-70 hover:opacity-100"
+                          class={actionClass}
+                          title={`View ${cell(row, "title")} on the site`}
+                          aria-label={`View ${cell(row, "title")} on the site`}
                         >
-                          View
+                          <Icon name="eye-outline" />
                         </a>
                       )}
                       <form
@@ -143,9 +161,11 @@ function scheduledFor(row: ContentRow): string | null {
                         <input type="hidden" name="id" value={row.id} />
                         <button
                           type="submit"
-                          class="text-red-700 underline underline-offset-4 dark:text-red-400"
+                          class={deleteClass}
+                          title={`Delete ${cell(row, "title")}`}
+                          aria-label={`Delete ${cell(row, "title")}`}
                         >
-                          Delete
+                          <Icon name="trash" />
                         </button>
                       </form>
                     </div>

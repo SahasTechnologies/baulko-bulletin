@@ -11,8 +11,11 @@
  * `.html-code` metrics, because the moment they disagree about the font, the
  * leading or the padding, the caret drifts away from the word underneath it.
  *
- * The area grows with the text instead of scrolling inside itself, which keeps
- * the two layers in step without any scroll syncing.
+ * The area grows with the text up to a ceiling and then scrolls inside itself,
+ * so a long body does not push the Save button a screenful away. Past that
+ * ceiling the two layers have to be kept in step by hand: the `<pre>` is offset
+ * by the textarea's own scroll position as it scrolls, since a `pre` has no
+ * scrollbar of its own to follow.
  *
  * Preview is the real thing rather than an approximation: the site renders
  * stored HTML with `set:html`, so this renders it the same way, inside the same
@@ -23,6 +26,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import Icon from "@/components/ui/Icon";
 import { tokenizeHtml, type HtmlTokenKind } from "@/lib/html-highlight";
+
+/**
+ * The most the field will grow to before it scrolls instead, in lines of its own
+ * text. Around a screenful: enough that ordinary body copy is readable without
+ * scrolling, and short enough that the Save button below it stays reachable.
+ */
+const MAX_VISIBLE_ROWS = 30;
 
 interface Props {
   name: string;
@@ -57,13 +67,27 @@ export default function HtmlField({
   const [value, setValue] = useState(initial);
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLPreElement>(null);
 
   const tokens = useMemo(() => tokenizeHtml(value), [value]);
 
   /**
-   * Fits the field to its text. `rows` is a floor rather than the size: the
-   * minimum is computed from the line height so it holds whatever the theme's
-   * font does.
+   * Offsets the coloured layer by however far the textarea has been scrolled,
+   * so the words stay under the caret. Both layers are the same box, so this is
+   * the whole of the sync a `pre` needs to look scrolled.
+   */
+  const syncScroll = useCallback(() => {
+    const element = textareaRef.current;
+    const highlight = highlightRef.current;
+    if (!element || !highlight) return;
+    highlight.style.transform = `translateY(${-element.scrollTop}px)`;
+  }, []);
+
+  /**
+   * Fits the field to its text, up to `MAX_VISIBLE_ROWS`. `rows` is a floor
+   * rather than the size: the minimum is computed from the line height so it
+   * holds whatever the theme's font does. Past the ceiling the field stops
+   * growing and scrolls, which is when the sync above starts to matter.
    */
   const grow = useCallback(() => {
     const element = textareaRef.current;
@@ -71,9 +95,13 @@ export default function HtmlField({
     const styles = window.getComputedStyle(element);
     const lineHeight = Number.parseFloat(styles.lineHeight) || 20;
     const padding = Number.parseFloat(styles.paddingTop) + Number.parseFloat(styles.paddingBottom);
+    const ceiling = Math.max(lineHeight * MAX_VISIBLE_ROWS + padding, lineHeight * rows + padding);
     element.style.height = "auto";
-    element.style.height = `${Math.max(element.scrollHeight, lineHeight * rows + padding)}px`;
-  }, [rows]);
+    const wanted = Math.max(element.scrollHeight, lineHeight * rows + padding);
+    element.style.height = `${Math.min(wanted, ceiling)}px`;
+    element.style.overflowY = wanted > ceiling + 1 ? "auto" : "hidden";
+    syncScroll();
+  }, [rows, syncScroll]);
 
   useLayoutEffect(grow, [grow, value]);
 
@@ -124,7 +152,11 @@ export default function HtmlField({
           the form whatever tab is showing. */}
       <div className={tab === "edit" ? "" : "hidden"}>
         <div className="relative overflow-hidden rounded-xl border border-black/15 bg-white focus-within:ring-2 focus-within:ring-black/30 dark:border-white/15 dark:bg-neutral-900 dark:focus-within:ring-white/30">
-          <pre aria-hidden="true" className="html-code pointer-events-none absolute inset-0 overflow-hidden">
+          <pre
+            ref={highlightRef}
+            aria-hidden="true"
+            className="html-code pointer-events-none absolute inset-0 overflow-hidden"
+          >
             {tokens.map((token, index) => (
               <span key={index} className={TOKEN_CLASS[token.kind]}>
                 {token.text}
@@ -149,6 +181,7 @@ export default function HtmlField({
             value={value}
             spellCheck={false}
             onChange={(event) => setValue(event.target.value)}
+            onScroll={syncScroll}
             onKeyDown={(event) => {
               // Tab belongs to the source, not to the form: it indents rather
               // than jumping focus out of a field someone is halfway through.

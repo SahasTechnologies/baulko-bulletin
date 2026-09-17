@@ -2,7 +2,6 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Icon from "@/components/ui/Icon.astro";
 import Logo from "@/components/ui/Logo.astro";
-import ThemeToggle from "@/components/ui/ThemeToggle";
 import { getSettings } from "@/lib/db";
 import { adminConfigured, adminPassword } from "@/lib/auth";
 import { flashFromUrl, safeAdminPath } from "@/lib/admin";
@@ -31,12 +30,6 @@ const inputClass =
         <div>
           <h1 class="text-3xl font-bold leading-tight tracking-tighter">Bulletin Admin</h1>
           <p class="opacity-70">Staff access only.</p>
-        </div>
-        {/* The panel's toggle lives in its header, which this page does not
-            have yet — and a password field in a dark room is reason enough to
-            want the switch anyway. */}
-        <div class="ml-auto inline-flex items-center self-start rounded-full border border-black/15 px-4 py-1.5 dark:border-white/20">
-          <ThemeToggle client:load />
         </div>
       </div>
 

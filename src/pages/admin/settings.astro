@@ -1,7 +1,6 @@
 ---
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import Flash from "@/components/admin/Flash.astro";
-import HtmlField from "@/components/admin/HtmlField";
 import Icon from "@/components/ui/Icon.astro";
 import { getSettingsRow } from "@/lib/admin-db";
 import { escapeHtml, flashFromUrl } from "@/lib/admin";
@@ -64,26 +63,15 @@ const inputClass =
         inputmode="url"
         maxlength="2000"
         value={settings.og_image_url ?? ""}
-        placeholder="https://ik.imagekit.io/…"
         class={inputClass}
       />
     </div>
 
-    <div>
-      <label for="footer_html" class="mb-1 block text-sm font-medium">Footer (HTML)</label>
-      <HtmlField
-        client:load
-        name="footer_html"
-        fieldId="footer_html"
-        initial={settings.footer_html ?? ""}
-        rows={10}
-        maxLength={200000}
-        placeholder="Leave blank for the default “Join the Bulletin” footer"
-      />
-      <p class="mt-1 text-sm leading-relaxed opacity-60">
-        Leave blank to keep the built-in footer (join details, contact button and credits).
-      </p>
-    </div>
+    {/* The footer's own HTML field is gone: it was the one setting with no
+        ceiling on what it could contain, and a page footer is layout and
+        credits rather than copy. A custom footer already stored in the
+        database is left exactly as it is — the panel simply no longer offers
+        a way to write one. */}
 
     <div class="flex flex-wrap items-center gap-4">
       <button

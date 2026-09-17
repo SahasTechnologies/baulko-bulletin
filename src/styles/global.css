@@ -385,6 +385,22 @@ button:not(:disabled):active {
   transition: none !important;
 }
 
+/* The other half of the fit test. Measuring the row means opening every label
+   for a frame and putting it back (`nav-measuring`), and the putting-back is a
+   style change to a label whose transition is enabled again the moment that
+   class comes off — so each resize step started four transitions per label,
+   and dragging a window made the header's text re-animate continuously even
+   when nothing about the layout had changed. `src/lib/nav-fit.ts` adds this for
+   the length of the fit and takes it off in the next frame, so the measurement's
+   own changes are never animated.
+
+   A frame, not a task: the class has to still be on when the styles it is
+   muting are put back, and coming off afterwards cannot start anything, since
+   no label's styles change in that frame. */
+html.nav-fitting .icon-nav-label {
+  transition: none !important;
+}
+
 /* The admin panel's nav sits on a plain background where an icon alone can
    read as ambiguous, so links there sit at full opacity and the current
    section's label stays open with an underline instead. "Dashboard" is its

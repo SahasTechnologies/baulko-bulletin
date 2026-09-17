@@ -5,6 +5,7 @@ import { Crossword } from "@/components/puzzles/Crossword";
 import { FindAWord } from "@/components/puzzles/FindAWord";
 import { Unscramble } from "@/components/puzzles/Unscramble";
 import MoreStories from "@/components/ui/MoreStories";
+import { croppedSquareUrl } from "@/lib/images";
 import { getSettings, getPuzzleBySlug, getPuzzleByIndex, getMorePosts } from "@/lib/db";
 import type { Puzzle } from "@/types/content";
 
@@ -36,6 +37,16 @@ if (!puzzle) {
 
 const article = puzzle.type === "Unscramble" ? "an" : "a";
 
+/**
+ * A standalone puzzle's own picture, if it has one.
+ *
+ * A puzzle inside an issue borrows that issue's cover for its tile, and the
+ * cover is already on the issue's own page — showing it again here would be the
+ * same magazine cover twice. A puzzle that belongs to no issue has no such
+ * page, so this is the only place its art appears.
+ */
+const ownArt = puzzle.post_id ? null : croppedSquareUrl(puzzle.cover_image_url);
+
 /** The reader each puzzle type is played with. */
 const READABLE: Puzzle["type"][] = ["Crossword", "Find-A-Word", "Unscramble"];
 const playable = READABLE.includes(puzzle.type);
@@ -52,6 +63,15 @@ const morePosts = await getMorePosts(2);
       <h2 class="text-balance mb-12 text-xl font-semibold leading-tight tracking-tighter md:text-2xl lg:text-3xl opacity-50">
         {article} {puzzle.type} puzzle, by {puzzle.author_name || "Anonymous"}
       </h2>
+      {ownArt && (
+        <img
+          src={ownArt}
+          alt={puzzle.title}
+          width={1000}
+          height={1000}
+          class="mb-12 size-56 rounded-2xl object-cover shadow-md sm:size-72"
+        />
+      )}
       {
         /* Each reader is written out rather than looked up in a map: a client
            directive has to sit on a component the compiler can name, so

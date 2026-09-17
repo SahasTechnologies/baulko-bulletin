@@ -1,6 +1,7 @@
 ---
 import AdminLayout from "@/layouts/AdminLayout.astro";
 import Flash from "@/components/admin/Flash.astro";
+import Icon from "@/components/ui/Icon.astro";
 import { listSubmissions } from "@/lib/admin-db";
 import { flashFromUrl } from "@/lib/admin";
 
@@ -25,7 +26,7 @@ const unread = messages.filter((message) => !message.read).length;
 // places. The time is the server's best guess at a clock it cannot know — the
 // panel is read from wherever the operator happens to be, so it renders UTC and
 // the script at the foot of the page rewrites it in the reader's own timezone.
-// The bracketed place is not the reader's at all: it is where the message was
+// The place beside it is not the reader's at all: it is where the message was
 // sent from, resolved from the sender's address as the submission arrived, and
 // it is rendered as it was recorded.
 const formatter = new Intl.DateTimeFormat("en-AU", {
@@ -34,11 +35,30 @@ const formatter = new Intl.DateTimeFormat("en-AU", {
   timeZone: "UTC",
 });
 
-function received(value: string | null, place: string | null): string {
+function received(value: string | null): string {
   const date = value ? new Date(value) : null;
   if (!date || Number.isNaN(date.getTime())) return "—";
-  return `${formatter.format(date)}${place ? ` (${place})` : ""}`;
+  return formatter.format(date);
 }
+
+/**
+ * Gmail's compose window for a reply, rather than a `mailto:`.
+ *
+ * The panel is a browser tab like any other, and a `mailto:` there hands the
+ * message to whatever the operating system has registered as a mail client —
+ * on a machine whose mail is Gmail in the browser, that is nothing at all, or a
+ * mail app nobody has set up. `fs=1&tf=cm` is Gmail's own "compose in a new
+ * window" form, addressed to whoever wrote in.
+ */
+function gmailCompose(to: string): string {
+  return `https://mail.google.com/mail/u/0/?fs=1&to=${encodeURIComponent(to)}&tf=cm`;
+}
+
+/** The row actions are icons; each one carries the words for a screen reader and a tooltip. */
+const actionClass =
+  "inline-flex size-9 items-center justify-center rounded-full border border-black/15 text-lg transition-transform hover:scale-110 dark:border-white/15";
+const dangerClass =
+  "inline-flex size-9 items-center justify-center rounded-full border border-red-500/40 text-lg text-red-700 transition-transform hover:scale-110 dark:text-red-400";
 ---
 
 <AdminLayout title="Messages" current="/admin/messages">
@@ -68,57 +88,93 @@ function received(value: string | null, place: string | null): string {
               message.read ? "border-black/10 dark:border-white/15" : "border-blue-500/50 bg-blue-500/5",
             ]}
           >
-            <div class="mb-3 flex flex-wrap items-baseline justify-between gap-3">
-              <div>
+            <div class="mb-3 flex flex-wrap items-start justify-between gap-4">
+              <div class="min-w-0">
                 <span class="text-xl font-bold">
                   {message.name}
-                  {!message.read && <span class="ml-3 text-sm font-semibold text-blue-700 dark:text-blue-300">NEW</span>}
+                  {!message.read && (
+                    <span class="ml-3 text-sm font-semibold text-blue-700 dark:text-blue-300">NEW</span>
+                  )}
                 </span>
-                <a href={`mailto:${message.email}`} class="ml-3 underline underline-offset-4 opacity-70">
-                  {message.email}
-                </a>
+                {/* The address is shown, not linked: it is there to be read, and
+                    a link that silently needs a desktop mail client installed
+                    is not a way to answer anyone. Reply is the button beside
+                    the sender's details. */}
+                <p class="break-all opacity-70">{message.email}</p>
               </div>
-              <time
-                datetime={message.created_at ?? ""}
-                data-received
-                data-place={message.location ?? ""}
-                class="text-sm opacity-60"
-              >
-                {received(message.created_at, message.location)}
-              </time>
+
+              <div class="flex items-center gap-2">
+                <form action="/api/admin/messages" method="POST">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="id" value={message.id} />
+                  <input type="hidden" name="action" value={message.read ? "unread" : "read"} />
+                  <button
+                    type="submit"
+                    class={actionClass}
+                    title={message.read ? "Mark as unread" : "Mark as read"}
+                    aria-label={message.read ? "Mark as unread" : "Mark as read"}
+                  >
+                    <Icon name={message.read ? "mail-unread-outline" : "mail-open-outline"} />
+                  </button>
+                </form>
+
+                <a
+                  href={gmailCompose(message.email)}
+                  target="_blank"
+                  rel="noreferrer"
+                  class={actionClass}
+                  title={`Reply to ${message.email} in Gmail`}
+                  aria-label={`Reply to ${message.email} in Gmail`}
+                >
+                  <Icon name="arrow-undo-outline" />
+                </a>
+
+                <form
+                  action="/api/admin/messages"
+                  method="POST"
+                  data-confirm={`Delete the message from ${message.name}? This cannot be undone.`}
+                >
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="id" value={message.id} />
+                  <input type="hidden" name="action" value="delete" />
+                  <button
+                    type="submit"
+                    class={dangerClass}
+                    title="Delete this message"
+                    aria-label="Delete this message"
+                  >
+                    <Icon name="trash" />
+                  </button>
+                </form>
+              </div>
             </div>
-            <p class="mb-5 whitespace-pre-line text-pretty text-lg">{message.message}</p>
-            <div class="flex flex-wrap items-center gap-5 text-sm">
-              <form action="/api/admin/messages" method="POST">
-                <input type="hidden" name="csrf" value={csrf} />
-                <input type="hidden" name="id" value={message.id} />
-                <input type="hidden" name="action" value={message.read ? "unread" : "read"} />
-                <button type="submit" class="underline underline-offset-4">
-                  Mark as {message.read ? "unread" : "read"}
-                </button>
-              </form>
-              <a href={`mailto:${message.email}`} class="underline underline-offset-4">Reply by email</a>
-              <form
-                action="/api/admin/messages"
-                method="POST"
-                data-confirm="Delete this message permanently?"
-              >
-                <input type="hidden" name="csrf" value={csrf} />
-                <input type="hidden" name="id" value={message.id} />
-                <input type="hidden" name="action" value="delete" />
-                <button type="submit" class="text-red-700 underline underline-offset-4 dark:text-red-400">
-                  Delete
-                </button>
-              </form>
+
+            {/* Where and when, on the left of the card, each behind its own icon.
+                The time is rewritten in the reader's timezone by the script at
+                the foot of the page; the place is left as it was recorded. */}
+            <div class="mb-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm opacity-70">
+              <span class="inline-flex items-center gap-1.5">
+                <Icon name="time-outline" />
+                <time datetime={message.created_at ?? ""} data-received>{received(message.created_at)}</time>
+              </span>
+              {message.location && (
+                <span class="inline-flex items-center gap-1.5">
+                  <Icon name="location-outline" />
+                  {message.location}
+                </span>
+              )}
             </div>
+
+            <p class="whitespace-pre-line text-pretty text-lg">{message.message}</p>
           </article>
         ))}
       </div>
     )
   }
 
-  {/* Rewrites every stamp in the reader's own timezone, keeping the bracketed
-      place — which is where the message came from, not where it is being read. */}
+  {/* Rewrites every stamp in the reader's own timezone. The place is no longer
+      part of this string — it is its own element with its own icon — so only
+      the time's text is replaced. */}
   <script>
     const stamps = document.querySelectorAll("time[data-received]");
     if (stamps.length) {
@@ -131,8 +187,7 @@ function received(value: string | null, place: string | null): string {
       for (const stamp of stamps) {
         const at = new Date(stamp.getAttribute("datetime") || "");
         if (Number.isNaN(at.getTime())) continue;
-        const place = stamp.getAttribute("data-place");
-        stamp.textContent = formatter.format(at) + (place ? ` (${place})` : "");
+        stamp.textContent = formatter.format(at);
       }
     }
   </script>

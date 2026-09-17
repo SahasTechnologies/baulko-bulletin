@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { saveSettings } from "@/lib/admin-db";
+import { getSettingsRow, saveSettings } from "@/lib/admin-db";
 import { csrfOk, flashTo, jsonResponse, originAllowed, readLimited, requireAdmin } from "@/lib/admin";
 
 export const prerender = false;
@@ -32,9 +32,8 @@ export const POST: APIRoute = async ({ request }) => {
   const title = readLimited(form, "title", 200, "Site title");
   const description = readLimited(form, "description", 600, "Site description");
   const ogImage = readLimited(form, "og_image_url", 2000, "Default social preview image URL");
-  const footer = readLimited(form, "footer_html", 200_000, "Footer");
 
-  for (const check of [title, description, ogImage, footer]) {
+  for (const check of [title, description, ogImage]) {
     if (check.error) return flashTo(back, "error", check.error);
   }
   if (!title.value) return flashTo(back, "error", "Site title is required.");
@@ -43,12 +42,15 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   try {
-    // Blank footer_html means "use the built-in footer", which BaseLayout does
-    // when the column is null.
+    // The footer is read back out of the database and written straight back, so
+    // the panel can no longer set one but an existing one survives a save of
+    // the fields beside it. `saveSettings` writes the whole row, so passing
+    // null here would silently clear a footer someone had already written.
+    const current = await getSettingsRow();
     await saveSettings({
       title: title.value,
       description: description.value,
-      footer_html: footer.value || null,
+      footer_html: current.footer_html,
       og_image_url: ogImage.value || null,
     });
     return flashTo(back, "ok", "Settings saved.");

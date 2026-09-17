@@ -124,7 +124,7 @@ const posts: EntityDef = {
       full: true,
       html: true,
       allowImages: true,
-      help: "Only needed when there is no PDF. HTML, not Markdown — paragraphs, headings, links and lists all work. Use “Add a picture to the text” to upload art into the body.",
+      help: "Only needed when there is no PDF.",
     },
   ],
 };
@@ -171,7 +171,6 @@ const extras: EntityDef = {
       full: true,
       html: true,
       allowImages: true,
-      help: "HTML, not Markdown — paragraphs, headings, links and lists all work. Use “Add a picture to the text” to upload art into the body, captioned or not.",
     },
   ],
 };
@@ -214,9 +213,13 @@ const puzzles: EntityDef = {
     },
     {
       name: "cover_image_url",
-      label: "Cover image",
+      label: "Puzzle image",
       type: "image",
-      help: "Optional art for the puzzle tile. Square (1:1) reads best — the tiles are square.",
+      // The one picture a puzzle can be given, and the only one a standalone
+      // puzzle ever gets: a puzzle that belongs to an issue borrows that
+      // issue's cover for its tile, but there is no issue to borrow from when
+      // the picker above is left blank.
+      help: "Square (1:1) reads best — the tiles are square. A puzzle that belongs to an issue falls back to the issue's own cover, so it needs nothing here; a standalone puzzle has nothing else to fall back on, and without this its tile and page are plain.",
     },
     {
       name: "data",
