@@ -21,6 +21,51 @@ Markdown and no build step between typing in the panel and the page changing.
 | pdf.js | Reads issue PDFs in the browser (`scripts/sync-pdfjs-assets.mjs` copies it into `public/pdfjs` on install and build). Both of its entry points are named in `astro.config.mjs`'s `optimizeDeps`, so a dev session never re-bundles it out from under a page that is already open — which used to fail the reader with a 504. |
 | Cloudflare Turnstile | Optional CAPTCHA on the contact form. |
 
+## Layout, and the easing across it
+
+Two modules own how the site behaves as a window is resized, and neither is a
+component. `src/lib/layout-flip.ts` is started from `src/layouts/BaseLayout.astro`
+— so every page, the panel and its login screen included, is covered — and it
+drives the other one before each of its readings.
+
+`src/lib/nav-fit.ts` decides the nav's shape on a laptop: whether a line of icons
+holds its labels, needs two lines, or has to show every label outright. It opens
+every label for one measuring frame, sums the worst case, and marks the result
+with a class that `global.css` has rules for. Without JavaScript the nav keeps the
+shape it is authored in.
+
+`src/lib/layout-flip.ts` eases the page across every crossing rather than letting
+it jump. It finds both halves of that instead of listing them:
+
+- **The widths.** Every `min-width`/`max-width` the page's own CSS switches at is
+  read out of the stylesheets at load, so a breakpoint added later needs nothing
+  added here.
+- **The rows.** Any box that arranges its children itself — a flex row, a grid —
+  has its children gathered into lines by which of their boxes overlap
+  vertically. A row that goes from three lines to two, or stacked to side by
+  side, has changed shape, whatever caused it, and the whole page eases with it.
+- **The nav's own fit test**, since it decides at a width no media query knows
+  about.
+
+Measured on the heaviest page, the reading it takes on each resize frame is a
+`getBoundingClientRect` for each of its 300-odd elements, which is about a
+millisecond; the fuller reading it takes when the page's tree changes — that one
+asks each element for its computed style too — is about two, and it runs on those
+changes rather than per frame. A drag then holds the frame rate: median 16.7ms
+across a 1400→700 drag on every page tried, worst 74ms, with the long tasks
+belonging to the pages' own islands rather than to this. The offsets it writes
+cost nothing at all until something actually crosses. It eases only the elements near the viewport, leaves everything exactly
+where CSS put it once it has settled (`npm run check` cannot see that, so it is
+checked in a browser instead: the page after a drag has to match a fresh load at
+the same width, to the pixel), and stays out of the way entirely for a reader who
+has asked for reduced motion — who still gets the new layout, just at once.
+
+An element can opt out with `data-flip="off"`. An island that has not hydrated
+yet is left alone until it has — an inline style written into one first is a
+style React never rendered, which it reports as a hydration mismatch and does
+not patch up — and its contents join the flip the moment its `ssr` marker comes
+off. The page's own boxes around the island are eased throughout.
+
 ## Development
 
 ```bash
@@ -399,12 +444,13 @@ network connection; the committed file is what builds.
   `Logo.astro` shows one file or the other through the `dark` class on `<html>`.
 
   The same tool's `--light` (or `npm run logo:light`) is the one edit the light
-  file needs rather than inherits: the drawing leaves its big cut-out
-  transparent, and the mark wants it white, so that command paints it — in
-  place, and idempotently — while leaving the small gaps the strokes enclose as
-  holes, where each theme shows its own page through. Which cut-outs qualify is
-  decided by size (`--cutout-min`, a percentage of the canvas), because the
-  drawing has both kinds and they want opposite treatment.
+  file needs rather than inherits: the drawing leaves its own cut-outs
+  transparent, and the mark wants them white — the cut-out through its body, and
+  the fly's own shapes — so that command paints them, in place and idempotently.
+  Which cut-outs that means is decided by how wide the gap is (`--cutout-min`,
+  12px across): the mark's shapes are wider than that and the two gaps left
+  inside the fly's legs are not, so the legs stay holes for each theme to show
+  its own page through rather than white blobs.
 
   `--check` compares a committed file against what the tool would write and
   names the colour a stale one holds instead, which is how `npm run check` (and

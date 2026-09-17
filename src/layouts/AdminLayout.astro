@@ -34,10 +34,11 @@ const isActive = (href: string) =>
 
 <BaseLayout title={`${title} · Admin`} settings={settings}>
   <div class="container mx-auto px-5">
-    {/* `flip-row` eases the brand and the sign-out form between their stacked
-        and side-by-side arrangements; see src/lib/layout-flip.ts. */}
+    {/* The brand and the sign-out form move between their stacked and
+        side-by-side arrangements under the same easing as the rest of the page;
+        see src/lib/layout-flip.ts. */}
     <header
-      class="flip-row mb-8 mt-10 flex flex-col gap-5 border-b border-black/10 pb-6 dark:border-white/10 lg:flex-row lg:items-center lg:justify-between"
+      class="mb-8 mt-10 flex flex-col gap-5 border-b border-black/10 pb-6 dark:border-white/10 lg:flex-row lg:items-center lg:justify-between"
     >
       <a href="/admin" class="flex items-center gap-3 text-3xl font-bold leading-tight tracking-tight hover:underline">
         <Logo class="size-[52px]" />
@@ -95,14 +96,6 @@ const isActive = (href: string) =>
     </nav>
 
     <slot />
-
-    {/* Same easing as the public nav and header, for the same reason: this one
-        changes shape at the same breakpoints. */}
-    <script>
-      import { initLayoutTransition } from "@/lib/layout-flip";
-
-      initLayoutTransition();
-    </script>
 
     {/* One listener for the whole panel instead of an inline `onsubmit` per form.
         A handler written as `onsubmit="return confirm('Delete “…”)'` interpolates

@@ -105,5 +105,15 @@ const ogImageUrl = (() => {
         </div>
       </footer>
     </section>
+
+    {/* Every page of the site is laid out one way on a laptop and another way
+        everywhere else, and this is what eases the whole page across those
+        crossings instead of letting it jump. It lives here rather than in the
+        nav, so that a page without one is eased too. */}
+    <script>
+      import { initLayoutTransition } from "@/lib/layout-flip";
+
+      initLayoutTransition();
+    </script>
   </body>
 </html>

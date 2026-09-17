@@ -13,17 +13,18 @@
  *     leaf reads as a mistake; a green one reads as a vein;
  *   - the artwork's own orange — a mid, saturated orange that is close in
  *     brightness to the dark page — becomes a brighter, lighter one;
- *   - the cut-outs are left as the artwork draws them. The one big cut-out is
- *     opaque white in the light file already (`--light` is what puts it there)
- *     and so is white here too, and the small gaps between the strokes stay
- *     transparent in both files, so each theme shows its own page through
- *     them rather than a white blob.
+ *   - the cut-outs the drawing means as white are white here too, because
+ *     `--light` has already painted them in the light file, which this reads.
+ *     The gaps that are the insides of the drawing's strokes — the two legs,
+ *     and nothing else — are left transparent in both files, so each theme
+ *     shows its own page through them rather than a white blob.
  *
  * It stays a recolour rather than a redraw: the drawing, its shading and its
  * soft edges are all the light file's, which remains the source of truth.
  *
  * Usage:
  *   node tools/make-logo-dark.mjs                     # write public/bulletin-dark.png
+ *   node tools/make-logo-dark.mjs --cutout-min 20     # how wide a gap counts as a shape
  *   node tools/make-logo-dark.mjs --light             # paint the light logo's cut-out
  *   node tools/make-logo-dark.mjs --out other.png     # somewhere else
  *   node tools/make-logo-dark.mjs --color '#A9451A'   # what the black becomes
@@ -121,17 +122,25 @@ const ALPHA_CUTOFF = 128;
  */
 const FILL_MARGIN = 2;
 /**
- * How big a cut-out has to be to count as one of the drawing's white shapes,
- * as a percentage of the canvas.
+ * How wide a cut-out has to be, in pixels, to count as one of the drawing's own
+ * white shapes rather than the inside of a stroke.
  *
  * The drawing has two kinds of enclosed transparency and they want opposite
- * treatment: the one big cut-out through the body of the mark is a white shape,
- * and the small ones enclosed by the strokes are the gaps the lines leave,
- * which belong transparent so each theme shows its own page through them. Area
- * is what separates them — the big one is 2.4% of this canvas and the largest
- * of the small ones 0.25%, so this line sits well clear of both.
+ * treatment. The mark's own white — the cut-out through the body, the fly's two
+ * round shapes and the small pieces with them — is a shape, and white in both
+ * files. The gaps left inside a stroke — the fly's two legs, which are lines
+ * drawn thin — are holes the page should show through, and filling them is what
+ * turns a leg into a white blob.
+ *
+ * Width is what separates them, measured as how deep the gap goes — how many
+ * pixels you can walk into it from its edge before you run out of gap. The six
+ * gaps inside the fly measure 21, 17, 10, 8, 3 and 2, and the cut-out through
+ * the body 60, so 12px across (an inset of 6) sits neatly between the drawing's
+ * shapes and the two legs, with room on both sides of it.
  */
-const CUTOUT_MIN_PERCENT = Number(argValue("--cutout-min", "0.5"));
+const CUTOUT_MIN_WIDTH = Number(argValue("--cutout-min", "12"));
+/** The inset that width means for the flood below: half of it, rounded up. */
+const MIN_INSET = Math.ceil((CUTOUT_MIN_WIDTH - 1) / 2);
 /**
  * How wide a run of black has to be, in pixels, to be too wide to be a line the
  * drawing made. The leaf's line measures between 9 and 37px across and the black
@@ -159,14 +168,14 @@ function hexToRgb(hex) {
  * A flood fill from every transparent border pixel walks the page around the
  * mark; the transparent pixels it never reaches are enclosed by the artwork.
  * Those are then grouped into the blobs they form — they are not one region,
- * and a cut-out through the body of the mark and the narrow gaps a stroke
- * leaves are separate blobs — and only the blobs at least `minArea` pixels big
- * are marked.
+ * and the cut-out through the body of the mark, the fly's shapes and the gaps
+ * inside its legs are separate blobs — and a blob is marked only if the gap it
+ * leaves is wide enough to be a shape rather than the inside of a stroke.
  *
  * A scan-line walk would be wrong here: the outline is not a rectangle, and a
  * hole can be reached around a thin stroke, so this floods properly.
  */
-function whiteCutouts(data, width, height, channels, minArea) {
+function whiteCutouts(data, width, height, channels, minInset) {
   const transparent = (x, y) => data[(y * width + x) * channels + 3] <= ALPHA_CUTOFF;
   const background = new Uint8Array(width * height);
   const stack = [];
@@ -201,6 +210,8 @@ function whiteCutouts(data, width, height, channels, minArea) {
   const mask = new Uint8Array(width * height);
   const seen = new Uint8Array(width * height);
   const areas = [];
+  /** How many of those gaps turned out to be shapes rather than line gaps. */
+  let white = 0;
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -226,12 +237,48 @@ function whiteCutouts(data, width, height, channels, minArea) {
         }
       }
 
+      // How deep the gap goes: walk in from every pixel on its edge at once and
+      // see how far the walk gets before it runs out of gap. A line's inside is
+      // shallow however long the line is; a shape's inside is not.
+      const inBlob = new Set(cells);
+      const depth = new Map();
+      let frontier = [];
+      for (const i of cells) {
+        const edge =
+          !inBlob.has(i + 1) || !inBlob.has(i - 1) || !inBlob.has(i + width) || !inBlob.has(i - width);
+        if (edge) {
+          depth.set(i, 0);
+          frontier.push(i);
+        }
+      }
+      let inset = 0;
+      while (frontier.length) {
+        const next = [];
+        for (const i of frontier) {
+          const x = i % width;
+          const y = (i - x) / width;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = x + dx;
+            const ny = y + dy;
+            const k = ny * width + nx;
+            if (!inBlob.has(k) || depth.has(k)) continue;
+            depth.set(k, (depth.get(i) ?? 0) + 1);
+            inset = Math.max(inset, depth.get(k));
+            next.push(k);
+          }
+        }
+        frontier = next;
+      }
+
       areas.push(cells.length);
-      if (cells.length >= minArea) for (const index of cells) mask[index] = 1;
+      if (inset >= minInset) {
+        for (const index of cells) mask[index] = 1;
+        white++;
+      }
     }
   }
 
-  return { mask, areas };
+  return { mask, areas, white };
 }
 
 /**
@@ -324,8 +371,7 @@ const source = await sharp(resolve(SOURCE)).ensureAlpha().raw().toBuffer({ resol
 const { width, height, channels } = source.info;
 const pixels = source.data;
 
-const minCutout = Math.round((CUTOUT_MIN_PERCENT / 100) * width * height);
-const { mask: cutouts, areas } = whiteCutouts(pixels, width, height, channels, minCutout);
+const { mask: cutouts, areas, white } = whiteCutouts(pixels, width, height, channels, MIN_INSET);
 const fill = dilate(cutouts, width, height, FILL_MARGIN);
 /** Only the dark file recolours, so only it has a vein to find. */
 const vein = LIGHT ? null : leafLine(pixels, width, height, channels, VEIN_MAX_WIDTH);
@@ -499,9 +545,9 @@ async function check() {
   }
   console.log(
     LIGHT
-      ? `✓ ${OUTPUT} is the light logo this script paints: the cut-out through the ` +
-        `mark is white, and the ${areas.length} gaps the strokes enclose are left as ` +
-        `holes for the page to show through.`
+      ? `✓ ${OUTPUT} is the light logo this script paints: the mark's own cut-outs ` +
+        `are white, and the ${areas.length} gap(s) left inside its strokes are holes ` +
+        `for the page to show through.`
       : `✓ ${OUTPUT} matches this script: the outline is ${OUTLINE_ORANGE} ` +
         `(luminance ${outlineLuminance.toFixed(2)}), the darker of the two oranges — ` +
         `the fill is ${FILL_ORANGE} (${fillLuminance.toFixed(2)}) and the vein inside ` +
@@ -519,13 +565,11 @@ if (CHECK) {
   writeFileSync(resolve(OUTPUT), output);
 
   const size = (bytes) => `${Math.round(bytes / 1024)}KB`;
-  const white = areas.filter((area) => area >= minCutout);
   console.log(
     `logo  ${SOURCE} → ${OUTPUT} (${width}x${height})\n` +
-      `      ${filled} px of cut-out painted white — the enclosed areas are ` +
-      `${[...areas].sort((a, b) => b - a).join(", ") || "none"} px, and the ` +
-      `${white.length} of them over ${minCutout} px (${CUTOUT_MIN_PERCENT}%) are the ones ` +
-      `that are white rather than holes\n` +
+      `      ${filled} px of cut-out painted white — of the ${areas.length} enclosed gaps ` +
+      `(${[...areas].sort((a, b) => b - a).join(", ") || "none"} px²), the ${white} wider ` +
+      `than ${CUTOUT_MIN_WIDTH}px are white and the rest stay holes\n` +
       (LIGHT
         ? `      the light file's palette is left exactly as it was drawn\n`
         : `      ${recoloured} neutral px ramped to ${OUTLINE_ORANGE}, ` +

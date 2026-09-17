@@ -376,11 +376,13 @@ button:not(:disabled):active {
   }
 }
 
-/* Crossing a breakpoint swaps one shape of a row for the other, which is a
-   jump. `src/lib/layout-flip.ts` eases each element across instead — and this is
+/* Crossing a breakpoint swaps one shape of the page for the other, which is a
+   jump. `src/lib/layout-flip.ts` eases every element across instead — and this is
    the other half of that: while it does, the labels must not animate on their
    own. Two motions at once fight each other, and the label's own transition
-   would also defeat the measurement the flip is based on. */
+   would also defeat the measurement the flip is based on. Every other element
+   with a transition of its own is held still from the script, since only it
+   knows which elements those are. */
 .layout-flip .icon-nav-label {
   transition: none !important;
 }
