@@ -30,6 +30,8 @@ npm run check      # types, template diagnostics, the generated icons and the te
 npm test           # just the parser tests in src/lib/*.test.ts
 npm run icons      # regenerate src/lib/icons.generated.ts after adding an icon
 npm run logo:dark  # regenerate public/bulletin-dark.png after replacing the logo
+npm run logo:light # paint public/bulletin.png's own cut-out (after replacing it)
+npm run logos:check  # are the committed logos the ones the tool makes?
 npm run build      # production build
 npm run preview    # serve the built output
 ```
@@ -182,7 +184,7 @@ Sign in at **`/admin/login`** with `ADMIN_PASSWORD`.
 | `/admin` | Counts, plus links into everything below. |
 | `/admin/posts` | Issues — title, slug, date, excerpt, PDF URL, cover, HTML content. |
 | `/admin/extras` | Extras — stories, poetry, illustrations, with an author. |
-| `/admin/puzzles` | Crosswords, find-a-words and unscrambles. |
+| `/admin/puzzles` | All eight puzzle types: crossword, cross-number, find-a-word, unscramble, sudoku, cryptogram, connections, nonogram. |
 | `/admin/pages` | The About, FAQ and Join page bodies. |
 | `/admin/settings` | Site title, description and the default social preview. |
 | `/admin/messages` | Contact submissions: read/unread, where each came from, delete. |
@@ -241,12 +243,21 @@ inserts a `<figure>` at the cursor, into the same textarea.
 
 ### Puzzles
 
-Puzzles are typed in with fields rather than in the stored format: one row per
-answer with its grid position, direction and clue for a crossword; a grid plus a
-word list for a find-a-word; scrambled/answer pairs for an unscramble. The panel
-generates the compact text the public components parse, and a “raw data” view
-stays available for fixing anything by hand. A puzzle can be attached to the
-issue it appeared in.
+Eight types ship, and each is typed in with fields rather than in the stored
+format: one row per answer with its position, direction and clue for a crossword
+— and for a cross-number, which is the same grid with digits for answers; a grid
+plus a word list for a find-a-word; scrambled/answer pairs for an unscramble;
+four categories of four words for a connections; nine rows of nine cells for a
+sudoku; the picture itself for a nonogram, whose edge numbers are worked out
+from it; and a quote for a cryptogram, whose cipher the panel writes by
+scrambling it for you.
+
+The panel generates the compact text the public components parse, and while a
+value does not parse it holds the form's save button. That check runs through
+`lib/puzzle-data`, the same code the readers use, so a value the builder accepts
+is a value every reader can play. A “raw data” view stays available for fixing
+anything by hand — and validates too. A puzzle can be attached to the issue it
+appeared in.
 
 ### Contact messages
 
@@ -329,8 +340,8 @@ The tests cover the two modules that are pure enough to test without a bundler,
 because Node's type stripping resolves neither path aliases nor packages:
 
 - `src/lib/puzzle-data.ts` — the one place stored puzzle text is interpreted.
-  The three public readers and the admin's validator all run through it, so a
-  wrong answer there is a wrong answer everywhere.
+  Every public reader and every field in the admin's builder runs through it, so
+  a wrong answer there is a wrong answer everywhere.
 - `src/lib/publish-time.ts` — what a publication date means. Both daylight-saving
   switches are pinned, along with midnight, which is where a naive formatter
   renders `24:00` and no time input will take it.
@@ -380,9 +391,24 @@ network connection; the committed file is what builds.
   photographed against a light backdrop leaves behind. Add `--write` to upload
   the result and repoint the row, `--index` to survey every cover.
 - `tools/make-logo-dark.mjs` — derives `public/bulletin-dark.png` from
-  `public/bulletin.png`, for the dark page: the black outline becomes a dark
-  orange (`#C2410C`), the orange the artwork is drawn in becomes a brighter one
-  (`#FF9C4A`), and the transparent cut-outs the drawing encloses become white.
-  `--color` and `--orange` set those two oranges. `Logo.astro` shows one file or the other
-  through the `dark` class on `<html>`; re-run the tool after replacing the
-  light logo.
+  `public/bulletin.png`, for the dark page: the black outline becomes a dark,
+  muted orange (`#A9451A`) — except the line down the middle of the green leaf,
+  which becomes a dark green (`#33691E`) so it reads as a vein rather than as a
+  stray piece of outline — and the orange the artwork is drawn in becomes a
+  brighter one (`#FF9C4A`). `--color`, `--vein` and `--orange` set those three.
+  `Logo.astro` shows one file or the other through the `dark` class on `<html>`.
+
+  The same tool's `--light` (or `npm run logo:light`) is the one edit the light
+  file needs rather than inherits: the drawing leaves its big cut-out
+  transparent, and the mark wants it white, so that command paints it — in
+  place, and idempotently — while leaving the small gaps the strokes enclose as
+  holes, where each theme shows its own page through. Which cut-outs qualify is
+  decided by size (`--cutout-min`, a percentage of the canvas), because the
+  drawing has both kinds and they want opposite treatment.
+
+  `--check` compares a committed file against what the tool would write and
+  names the colour a stale one holds instead, which is how `npm run check` (and
+  so every deploy) catches a dark logo left over from an earlier palette, or a
+  light logo whose cut-out was reverted — a valid PNG either way, and one that
+  only looks wrong on the page it was not drawn for. Re-run the tool after
+  replacing either file.
