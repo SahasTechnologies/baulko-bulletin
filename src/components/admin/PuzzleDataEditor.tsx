@@ -1,14 +1,25 @@
 "use client";
 
 /**
- * Builders for the three puzzle types, so a puzzle can be typed in as words
- * and clues rather than as the compact text the public readers parse.
+ * Builders for every puzzle type, so a puzzle can be typed in as words, clues
+ * and pictures rather than as the compact text the public readers parse.
  *
  * The stored format is unchanged — this component only writes it:
  *
  *   Crossword       one word per line: `x y across|down word clue`
+ *   Cross-number    the same lines, with digits instead of letters
  *   Find-A-Word     the grid rows, a blank line, then the hidden words
  *   Unscramble      one per line: `scrambled answer`
+ *   Sudoku          nine lines of nine cells, `1`-`9` or `.` when empty
+ *   Cryptogram      the ciphered quote, then the quote
+ *   Connections     `Category: word, word, word, word`, four times
+ *   Nonogram        the picture: rows of `#` filled and `.` empty
+ *
+ * A type whose fields are all free text — sudoku, nonogram — gets a textarea
+ * with a preview of what it parses to, because that is honest about the shape
+ * and there is nothing to gain from nine rows of nine inputs. A cryptogram's
+ * cipher is the one thing an editor should not have to work out by hand, so it
+ * is scrambled for them and stays editable afterwards.
  *
  * Parsing and validation go through `lib/puzzle-data` — the exact code the
  * public readers use — so a value the builder accepts is a value every
@@ -27,7 +38,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parsePuzzleData, type PuzzleDataProblem } from "@/lib/puzzle-data";
 
-const TYPES = ["Crossword", "Find-A-Word", "Unscramble"] as const;
+const TYPES = [
+  "Crossword",
+  "Cross-number",
+  "Find-A-Word",
+  "Unscramble",
+  "Sudoku",
+  "Cryptogram",
+  "Connections",
+  "Nonogram",
+] as const;
 type PuzzleType = (typeof TYPES)[number];
 
 interface CrosswordRow {
@@ -45,11 +65,31 @@ interface Finder {
   grid: string;
   words: string;
 }
+/** A grid typed as text: one line per row, cells separated or not. */
+interface Grid {
+  grid: string;
+}
+interface Cryptogram {
+  /** The quote as it reads. */
+  quote: string;
+  /** The quote enciphered — generated from the quote above, then editable. */
+  cipher: string;
+}
+interface ConnectionsRow {
+  name: string;
+  /** The four words as typed, comma-separated. */
+  words: string;
+}
 
 interface Store {
+  /** Shared by Crossword and Cross-number: one format, so one set of rows. */
   Crossword: CrosswordRow[];
   "Find-A-Word": Finder;
   Unscramble: ScrambleRow[];
+  Sudoku: Grid;
+  Cryptogram: Cryptogram;
+  Connections: ConnectionsRow[];
+  Nonogram: Grid;
 }
 
 const inputClass =
@@ -100,6 +140,28 @@ function parseInto(
     const [grid, ...rest] = parts;
     return { store: { ...store, "Find-A-Word": { grid: grid!.trim(), words: rest.join("\n\n").trim() } } };
   }
+  if (type === "Sudoku" || type === "Nonogram") {
+    // Both are just a block of text: keeping the lines verbatim is the whole
+    // of reading them back, so a partly-typed grid still opens in the builder.
+    const grid = data.split("\n").filter((line) => line.trim()).join("\n");
+    return { store: { ...store, [type]: { grid } } };
+  }
+  if (type === "Cryptogram") {
+    const lines = data.split("\n").filter((line) => line.trim());
+    if (lines.length !== 2) return { error: "a cryptogram is two lines: the ciphered quote, then the quote." };
+    return { store: { ...store, Cryptogram: { cipher: lines[0]!.trim(), quote: lines[1]!.trim() } } };
+  }
+  if (type === "Connections") {
+    const rows: ConnectionsRow[] = [];
+    for (const raw of data.split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      const match = line.match(/^([^:]{1,60}):\s*(.+)$/);
+      if (!match) return { error: "one or more lines do not fit “Category: word, word, word, word”." };
+      rows.push({ name: match[1]!.trim(), words: match[2]!.trim() });
+    }
+    return { store: { ...store, Connections: rows.length ? rows : store.Connections } };
+  }
   const rows: ScrambleRow[] = [];
   for (const raw of data.split("\n")) {
     const line = raw.trim();
@@ -116,6 +178,10 @@ function emptyStore(): Store {
     Crossword: [{ x: "0", y: "0", direction: "across", word: "", clue: "" }],
     "Find-A-Word": { grid: "", words: "" },
     Unscramble: [{ scrambled: "", answer: "" }],
+    Sudoku: { grid: "" },
+    Cryptogram: { quote: "", cipher: "" },
+    Connections: Array.from({ length: 4 }, () => ({ name: "", words: "" })),
+    Nonogram: { grid: "" },
   };
 }
 
@@ -126,6 +192,93 @@ function parseIntoOrNull(store: Store, type: PuzzleType, data: string): Store | 
 }
 
 /* -------------------------------------------------------------- serialising */
+
+/**
+ * A sudoku as rows of cells. Spaces, commas and pipes are how a grid is written
+ * down rather than cells, so they come out; a digit is kept as it was typed and
+ * an empty cell becomes a dot, since anything else is the parser's to judge.
+ */
+function serializeSudoku(grid: Grid): string {
+  return grid.grid
+    .split("\n")
+    .map((line) => line.replace(/[\s|,]/g, ""))
+    .filter(Boolean)
+    .map((line) =>
+      Array.from(line)
+        .map((cell) => (cell === "0" || cell === "_" || cell === "-" ? "." : cell))
+        .join("")
+    )
+    .join("\n");
+}
+
+/** Nonogram keeps the filled cells as `#` and the empty ones as a dot. */
+const NONOGRAM_FILLED = new Set(["#", "X", "1", "■", "█"]);
+const NONOGRAM_EMPTY = new Set([".", "_", "-", "0", "·"]);
+
+function serializeNonogram(grid: Grid): string {
+  return grid.grid
+    .split("\n")
+    .map((line) => line.replace(/[\s|,]/g, ""))
+    .filter(Boolean)
+    .map((line) =>
+      Array.from(line)
+        // Anything the editor typed that is neither a filled nor an empty
+        // square is left as it is, for the parser to complain about. Turning it
+        // into a dot here would save a picture quietly different from the one
+        // on screen, which is the one thing a preview must not do.
+        .map((cell) => (NONOGRAM_FILLED.has(cell.toUpperCase()) ? "#" : NONOGRAM_EMPTY.has(cell) ? "." : cell))
+        .join("")
+    )
+    .join("\n");
+}
+
+function serializeCryptogram(value: Cryptogram): string {
+  const cipher = value.cipher.trim().toUpperCase();
+  const quote = value.quote.trim().toUpperCase();
+  return quote ? `${cipher}\n${quote}` : "";
+}
+
+function serializeConnections(rows: ConnectionsRow[]): string {
+  return rows
+    .map((row) => ({
+      name: row.name.trim(),
+      words: row.words
+        .split(",")
+        .map((word) => word.trim())
+        .filter(Boolean),
+    }))
+    .filter((row) => row.name && row.words.length)
+    .map((row) => `${row.name}: ${row.words.join(", ")}`)
+    .join("\n");
+}
+
+/**
+ * Enciphers a quote with a fresh substitution, so an editor never has to write
+ * a cipher by hand — and so the cipher that ships is a real one.
+ *
+ * Each letter stands for the *next* letter in a randomly ordered alphabet,
+ * wrapping at the end. That is one 26-letter cycle, and a cycle of more than one
+ * letter never comes back to where it started, so no letter ever stands for
+ * itself — which is the point: a self-mapping letter hands the solver a letter
+ * of the quote for free. (Swapping letters that had landed on themselves looks
+ * like it fixes them, but a swap between two such letters can leave both in
+ * place; walking the shuffled alphabet cannot.)
+ */
+function scramble(quote: string): string {
+  const order = Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+  for (let index = order.length - 1; index > 0; index--) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [order[index], order[swap]] = [order[swap]!, order[index]!];
+  }
+  const mapping = new Map(
+    order.map((letter, index) => [letter, order[(index + 1) % order.length]!])
+  );
+  return quote
+    .toUpperCase()
+    .split("")
+    .map((char) => mapping.get(char) ?? char)
+    .join("");
+}
 
 function serializeCrossword(rows: CrosswordRow[]): string {
   return rows
@@ -220,9 +373,13 @@ export default function PuzzleDataEditor({
 
   const value = useMemo(() => {
     if (mode === "raw") return raw;
-    if (type === "Crossword") return serializeCrossword(store.Crossword);
+    if (type === "Crossword" || type === "Cross-number") return serializeCrossword(store.Crossword);
     if (type === "Find-A-Word") return serializeFinder(store["Find-A-Word"]);
-    return serializeUnscramble(store.Unscramble);
+    if (type === "Unscramble") return serializeUnscramble(store.Unscramble);
+    if (type === "Sudoku") return serializeSudoku(store.Sudoku);
+    if (type === "Cryptogram") return serializeCryptogram(store.Cryptogram);
+    if (type === "Connections") return serializeConnections(store.Connections);
+    return serializeNonogram(store.Nonogram);
   }, [mode, raw, store, type]);
 
   /**
@@ -362,7 +519,7 @@ export default function PuzzleDataEditor({
             This is exactly what gets saved. Switch back to the builder to edit it as fields.
           </p>
         </div>
-      ) : type === "Crossword" ? (
+      ) : type === "Crossword" || type === "Cross-number" ? (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3">
             {crosswordRows.map((row, index) => (
@@ -490,6 +647,35 @@ export default function PuzzleDataEditor({
             </div>
           )}
         </div>
+      ) : type === "Sudoku" ? (
+        <GridBuilder
+          grid={store.Sudoku.grid}
+          onChange={(grid) => updateStore({ Sudoku: { grid } })}
+          label="Grid"
+          rows={10}
+          placeholder={"53..7....\n6..195...\n.98....6.\n…"}
+          hint="One line per row, nine rows of nine. Digits 1-9 are the numbers given; a dot is a cell the solver fills in. Rows may be written with or without spaces."
+        />
+      ) : type === "Cryptogram" ? (
+        <CryptogramBuilder
+          value={store.Cryptogram}
+          onChange={(next) => updateStore({ Cryptogram: next })}
+        />
+      ) : type === "Connections" ? (
+        <ConnectionsBuilder
+          rows={store.Connections}
+          onChange={(rows) => updateStore({ Connections: rows })}
+        />
+      ) : type === "Nonogram" ? (
+        <GridBuilder
+          grid={store.Nonogram.grid}
+          onChange={(grid) => updateStore({ Nonogram: { grid } })}
+          label="Picture"
+          rows={12}
+          placeholder={"..##..##..\n.#..#..#..\n…"}
+          hint="One line per row. # is a filled square and a dot is an empty one — the numbers around the picture are worked out from it, so this is the whole puzzle. Spaces between cells are optional."
+          filled="#"
+        />
       ) : type === "Find-A-Word" ? (
         <div className="flex flex-col gap-4 md:flex-row">
           <div className="md:w-3/5">
@@ -604,6 +790,222 @@ export default function PuzzleDataEditor({
           {value || "(nothing yet)"}
         </pre>
       </details>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- grid-shaped builders */
+
+/**
+ * A puzzle that is one picture written out as rows: a sudoku's given numbers, a
+ * nonogram's filled squares. The picture is drawn underneath as cells as they
+ * are typed, because a grid that has come out a column short looks exactly like
+ * a grid that has not until it is drawn.
+ */
+function GridBuilder({
+  grid,
+  onChange,
+  label,
+  rows,
+  placeholder,
+  hint,
+  filled = "",
+}: {
+  grid: string;
+  onChange: (grid: string) => void;
+  label: string;
+  rows: number;
+  placeholder: string;
+  hint: string;
+  /**
+   * The character the preview draws as a filled square, for a picture whose
+   * cells are only filled or empty. Left out for a grid of digits, whose cells
+   * have something to say and are drawn as the text they hold.
+   */
+  filled?: string;
+}) {
+  const lines = grid
+    .split("\n")
+    .map((line) => line.replace(/[\s|,]/g, ""))
+    .filter(Boolean);
+  const widths = [...new Set(lines.map((line) => line.length))];
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className="mb-1 block text-sm font-medium">{label}</label>
+        <textarea
+          value={grid}
+          onChange={(event) => onChange(event.target.value)}
+          rows={rows}
+          spellCheck={false}
+          placeholder={placeholder}
+          className={`${inputClass} font-mono text-sm`}
+        />
+        <p className="mt-1 text-sm opacity-60">{hint}</p>
+      </div>
+
+      {lines.length > 0 && (
+        <div>
+          <p className="mb-2 text-sm font-medium">Preview</p>
+          <div className="overflow-x-auto rounded-xl bg-black/5 p-3 dark:bg-white/5">
+            <div className="flex flex-col gap-px">
+              {lines.map((line, y) => (
+                <div key={y} className="flex gap-px">
+                  {Array.from(line).map((cell, x) => (
+                    <div
+                      key={x}
+                      className={`flex size-5 items-center justify-center text-xs font-bold ${
+                        filled && cell === filled
+                          ? "bg-neutral-900 text-white dark:bg-white dark:text-black"
+                          : "bg-white text-black dark:bg-neutral-800 dark:text-white"
+                      }`}
+                    >
+                      {filled ? "" : cell === "." ? "" : cell}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="mt-1 text-sm">
+            {lines.length} rows × {lines[0]!.length} columns
+            {widths.length > 1 && (
+              <span className="ml-2 text-amber-700 dark:text-amber-400" role="alert">
+                rows are {widths.join(" and ")} wide — they should match
+              </span>
+            )}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- cryptogram */
+
+function CryptogramBuilder({
+  value,
+  onChange,
+}: {
+  value: Cryptogram;
+  onChange: (value: Cryptogram) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className="mb-1 block text-sm font-medium">Quote</label>
+        <textarea
+          value={value.quote}
+          onChange={(event) => onChange({ ...value, quote: event.target.value })}
+          rows={3}
+          spellCheck={false}
+          placeholder="What we know is a drop, what we do not know is an ocean."
+          className={inputClass}
+        />
+        <p className="mt-1 text-sm opacity-60">
+          The quote as it reads. It is uppercased when saved.
+        </p>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium">Ciphered quote</label>
+        <textarea
+          value={value.cipher}
+          onChange={(event) => onChange({ ...value, cipher: event.target.value })}
+          rows={3}
+          spellCheck={false}
+          className={`${inputClass} font-mono text-sm`}
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className={smallButtonClass}
+            onClick={() => onChange({ ...value, cipher: scramble(value.quote) })}
+            disabled={!value.quote.trim()}
+          >
+            Scramble the quote
+          </button>
+          <span className="text-sm opacity-60">
+            A fresh substitution, with no letter standing for itself. Edit it by hand
+            afterwards if you want a particular letter to give the game away.
+          </span>
+        </div>
+        <p className="mt-1 text-sm opacity-60">
+          It has to keep every space and mark of punctuation where the quote has it — the
+          panel says so below if the two have drifted apart.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------- connections */
+
+function ConnectionsBuilder({
+  rows,
+  onChange,
+}: {
+  rows: ConnectionsRow[];
+  onChange: (rows: ConnectionsRow[]) => void;
+}) {
+  const words = rows.flatMap((row) => row.words.split(",").map((word) => word.trim()).filter(Boolean));
+
+  return (
+    <div className="flex flex-col gap-3">
+      {rows.map((row, index) => (
+        <div
+          key={index}
+          className="grid grid-cols-[10rem_1fr_2rem] items-end gap-3 rounded-xl border border-black/10 p-3 dark:border-white/15"
+        >
+          <label className="flex flex-col text-xs opacity-70">
+            Category
+            <input
+              className={inputClass}
+              value={row.name}
+              placeholder="Things with wings"
+              onChange={(event) => {
+                const next = [...rows];
+                next[index] = { ...row, name: event.target.value };
+                onChange(next);
+              }}
+            />
+          </label>
+          <label className="flex flex-col text-xs opacity-70">
+            Words (four, comma-separated)
+            <input
+              className={inputClass}
+              value={row.words}
+              placeholder="plane, bird, bee, angel"
+              onChange={(event) => {
+                const next = [...rows];
+                next[index] = { ...row, words: event.target.value };
+                onChange(next);
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className={`${rowButtonClass} justify-self-end`}
+            title="Remove this category"
+            onClick={() => onChange(rows.filter((_, i) => i !== index))}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className={smallButtonClass}
+        onClick={() => onChange([...rows, { name: "", words: "" }])}
+      >
+        + Add a category
+      </button>
+      <p className="text-sm opacity-60">
+        {rows.length} of 4 categories · {words.length} of 16 words. The game is won by finding
+        groups of four, so every word has to be used exactly once and no two categories may share
+        one.
+      </p>
     </div>
   );
 }

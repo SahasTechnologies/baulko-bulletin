@@ -9,6 +9,8 @@
  * exact format the public components parse.
  */
 
+import { PUZZLE_TYPES } from "@/lib/puzzle-data";
+
 export type EntityKey = "posts" | "extras" | "puzzles";
 
 /**
@@ -200,7 +202,9 @@ const puzzles: EntityDef = {
       label: "Puzzle type",
       type: "select",
       required: true,
-      options: ["Crossword", "Find-A-Word", "Unscramble"],
+      // The parser's own list, so a type can never be offered here without a
+      // reader to play it (or a reader without the panel being able to save it).
+      options: [...PUZZLE_TYPES],
       help: "Must match the data below — it decides which interactive component renders.",
     },
     { name: "date", label: "Publication date", type: "date", required: true, help: PUBLICATION_DATE_HELP },

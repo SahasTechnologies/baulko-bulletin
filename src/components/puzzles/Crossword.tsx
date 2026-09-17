@@ -23,11 +23,19 @@ function Playable({ entries }: {
   const words = entries
   const starts = useMemo(() => words.map(word => ({ x: word.x, y: word.y })).filter((word, index, words) => words.findIndex(other => other.x == word.x && other.y == word.y) == index).toSorted((a, b) => a.y - b.y || a.x - b.x), [words]);
   const size = useMemo(() => {
+    // The number of columns and rows the grid has to hold, which is one past
+    // the last cell each word occupies — in *both* directions.
+    //
+    // A word used to extend only the axis it ran along, so an across word set
+    // no height at all. A crossword whose bottom row held only across answers
+    // therefore lost that row, and a grid made of a single across word had
+    // size 0×0 and rendered nothing whatsoever — which is the shortest honest
+    // cross-number there is, one number to work out.
     let size = { x: 0, y: 0 };
     for (const word of words) {
-      let end = {
-        'across': { x: word.x + word.word.length, y: word.y },
-        'down': { x: word.x, y: word.y + word.word.length }
+      const end = {
+        'across': { x: word.x + word.word.length, y: word.y + 1 },
+        'down': { x: word.x + 1, y: word.y + word.word.length }
       }[word.direction];
       size.x = Math.max(size.x, end.x);
       size.y = Math.max(size.y, end.y);
@@ -92,7 +100,10 @@ function Playable({ entries }: {
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
       const result = (() => {
-        if (event.key.length == 1 && event.key.match(/[a-zA-Z]/)) {
+        // Digits as well as letters: a cross-number is the same grid and the
+        // same clues-per-cell reader with numbers for answers, and it is read
+        // by this component.
+        if (event.key.length == 1 && event.key.match(/[a-zA-Z0-9]/)) {
           return [{ type: 'write', char: event.key.toUpperCase() }, 'next'];
         }
         switch (event.key) {
