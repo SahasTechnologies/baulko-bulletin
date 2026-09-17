@@ -9,9 +9,10 @@ interface Props {
 const brand = Astro.props.brand || "Baulko Bulletin";
 ---
 
-{/* `flip-row` moves the brand and the nav between their stacked and side-by-side
-    arrangements instead of swapping them; see src/lib/layout-flip.ts. */}
-<div class="flip-row mb-8 mt-10 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+{/* The brand and the nav are stacked here and set side by side on a laptop. The
+    move between the two is eased rather than swapped, like every other
+    re-arrangement on the page — see src/lib/layout-flip.ts. */}
+<div class="mb-8 mt-10 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
   {/* Nothing about the brand may depend on the nav's width: a brand that can
       shrink wraps its own name when the nav needs the room, and hands the nav
       more room in exchange — which would let the two swap places back and

@@ -155,6 +155,11 @@ export default function HtmlField({
           <pre
             ref={highlightRef}
             aria-hidden="true"
+            // The scroll sync above writes this layer's own `transform`, so the
+            // page-wide layout flip (src/lib/layout-flip.ts) has to leave it
+            // alone: it clears inline transforms when it settles, which would
+            // drop the offset and slide the colouring off the words.
+            data-flip="off"
             className="html-code pointer-events-none absolute inset-0 overflow-hidden"
           >
             {tokens.map((token, index) => (

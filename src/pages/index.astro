@@ -17,9 +17,9 @@ const extras = await getAllExtras(5);
 <BaseLayout settings={settings}>
   <div class="container mx-auto px-5">
     {/* The logo, the title and the nav column are centred in a stack here and
-        set in a row on a laptop. `flip-row` slides them between the two
-        arrangements instead of snapping; see src/lib/layout-flip.ts. */}
-    <section class="flip-row mt-12 mb-12 flex flex-col items-center lg:mb-10 lg:flex-row lg:items-center lg:justify-evenly">
+        set in a row on a laptop, and are slid between the two arrangements
+        rather than snapped; see src/lib/layout-flip.ts. */}
+    <section class="mt-12 mb-12 flex flex-col items-center lg:mb-10 lg:flex-row lg:items-center lg:justify-evenly">
       <Logo alt="Bulletin logo of orange" class="size-[180px] lg:size-[230px]" />
       <h1 class="text-center lg:text-start text-6xl font-bold leading-none tracking-tighter lg:pr-8 lg:text-7xl">
         {settings.title}
