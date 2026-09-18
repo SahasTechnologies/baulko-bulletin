@@ -35,7 +35,8 @@ export interface AdminSession {
 function readSecret(name: "ADMIN_PASSWORD" | "ADMIN_SESSION_SECRET"): string {
   const fromProcess = process.env[name];
   if (fromProcess) return fromProcess;
-  const fromImportMeta = (import.meta.env as Record<string, string | undefined>)[name];
+  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
+  const fromImportMeta = meta.env?.[name];
   return fromImportMeta || "";
 }
 

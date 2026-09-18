@@ -42,7 +42,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(ROOT, "src");
 const OUTPUT = path.join(SRC, "lib", "icons.generated.ts");
 
-/** Chosen at runtime, so the scanner below cannot see them (see ThemeToggle). */
+/**
+ * Not named in any component, so the scanner below cannot see them: these two
+ * are read out of the generated file by name instead — `scripts/sync-theme-morph.mjs`
+ * turns them into the geometry the theme toggle morphs between.
+ */
 const IONICONS_EXTRA = ["moon", "sunny"];
 
 /* ------------------------------------------------------------------ sources */

@@ -16,15 +16,17 @@ const error = Astro.url.searchParams.get("error");
 const turnstileSiteKey =
   import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ||
   import.meta.env.TURNSTILE_SITE_KEY ||
-  "0x4AAAAAAEzFFYWu-LrrOV_w";
+  "";
 ---
 
 <BaseLayout title="Contact" settings={settings}>
-  <script
-    is:inline
-    src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-    async
-    defer></script>
+  {turnstileSiteKey && (
+    <script
+      is:inline
+      src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+      async
+      defer></script>
+  )}
   <div class="container mx-auto px-5">
     <PageHeader brand={settings.title} />
     <div class="mx-auto max-w-xl">
@@ -100,13 +102,15 @@ const turnstileSiteKey =
             ></textarea>
           </div>
 
-          <div
-            class="cf-turnstile"
-            data-sitekey={turnstileSiteKey}
-            data-action="contact"
-            data-theme="auto"
-          >
-          </div>
+          {turnstileSiteKey && (
+            <div
+              class="cf-turnstile"
+              data-sitekey={turnstileSiteKey}
+              data-action="contact"
+              data-theme="auto"
+            >
+            </div>
+          )}
 
           <button
             type="submit"

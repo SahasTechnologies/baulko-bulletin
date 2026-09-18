@@ -65,13 +65,13 @@ function Playable({ entries }: {
     return letter;
   })), [size.x, size.y, starts, words]);
 
-  // Setter-only state: the values are written but never read back.
-  const [, setOuterSolution] = useState(null);
   const [, setSelectedWord] = useState<{
     x: number, y: number, word: string, direction: 'across' | 'down'
   } | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
-  const [solution, setSolution] = useState(Object.fromEntries(letters.filter(letter => letter).map((index) => [index, null])));
+  const [solution, setSolution] = useState<Record<string, string | null>>(
+    () => Object.fromEntries(letters.flatMap((letter, index) => (letter ? [[index, null]] : [])))
+  );
   const [lastDirection, setLastDirection] = useState('across');
   const wordContains = (word: {
     x: number, y: number, word: string, direction: 'across' | 'down'
@@ -85,15 +85,13 @@ function Playable({ entries }: {
       && word.y <= position.y
       && position.y <= end.y
   }
-  const onSelectionChange = () => {
+  const onSelectionChange = (nextSelected = selected, direction = lastDirection) => {
     const position = (index: number) => ({ x: index % size.x, y: Math.floor(index / size.x) });
-    if (selected === null) {
-      setSelectedWord(
-        selected
-      )
+    if (nextSelected === null) {
+      setSelectedWord(null);
     } else {
-      const filtered = words.filter(word => wordContains(word, position(selected)))
-      setSelectedWord(filtered.find(word => word.direction == lastDirection) || filtered[0])
+      const filtered = words.filter(word => wordContains(word, position(nextSelected)));
+      setSelectedWord(filtered.find(word => word.direction === direction) || filtered[0] || null);
     }
   }
 
@@ -120,7 +118,7 @@ function Playable({ entries }: {
             return [{ type: 'clear' }, 'previous'];
           case 'Escape':
             setSelected(null);
-            onSelectionChange();
+            onSelectionChange(null);
             event.preventDefault();
             return null;
           default:
@@ -195,7 +193,7 @@ function Playable({ entries }: {
           return null;
         }
         setSelected(newSelected!);
-        onSelectionChange();
+        onSelectionChange(newSelected);
       })();
       switch ((next as any).type) {
         case 'keep':
@@ -203,13 +201,12 @@ function Playable({ entries }: {
         default:
           switch ((next as any).type) {
             case 'clear':
-              setSolution({ ...solution, [selected as any]: null });
+              setSolution((current) => ({ ...current, [selected as any]: null }));
               break;
             case 'write':
-              setSolution({ ...solution, [selected as any]: (next as any).char });
+              setSolution((current) => ({ ...current, [selected as any]: (next as any).char }));
               break;
           }
-          setOuterSolution(solution);
       }
     };
     window.addEventListener('keydown', handler)
@@ -231,7 +228,7 @@ function Playable({ entries }: {
                       className="size-full"
                       onClick={() => {
                         setSelected(index);
-                        onSelectionChange();
+                        onSelectionChange(index);
                       }}
                     ></button>
                   </div>)
@@ -257,18 +254,15 @@ function Playable({ entries }: {
                         setLastDirection(lastDirection == 'across' ? 'down' : 'across');
                       }}
                       onFocus={() => {
-                        if (selected === null) {
-                          setSelected(index)
-                        } else if (selected === index) {
-                          setSelected(null)
-                        } else {
-                          setSelected(index)
-                        }
-                        onSelectionChange()
+                        const nextSelected = selected === index ? null : index;
+                        setSelected(nextSelected);
+                        onSelectionChange(nextSelected);
                       }}
-                      defaultValue={
-                        solution[index] || ''
-                      }
+                      onChange={(event) => {
+                        const value = event.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(-1).toUpperCase();
+                        setSolution((current) => ({ ...current, [index]: value || null }));
+                      }}
+                      value={solution[index] || ''}
                     />
                     <div className="absolute text-[8px] leading-none opacity-50 inset-0.5 pointer-events-none">
                       {(() => {
@@ -289,17 +283,12 @@ function Playable({ entries }: {
       </div>
       <div className="flex justify-center">
         <button className="p-1 px-2 disabled:opacity-25 bg-black text-white rounded-xl" onClick={() => {
-          if (JSON.stringify([...Array(size.x * size.y)].map((_, index) => Object.fromEntries(Object.entries(solution).filter(([, char]) => char).toSorted(([a], [b]) => parseInt(a) - parseInt(b)))[index.toString()])) == JSON.stringify(letters.map((letter) => {
-            if (!letter) {
-              return null
-            }
-            return letter.char
-          }))) {
+          if (letters.every((letter, index) => !letter || solution[index] === letter.char)) {
             alert('Congratulations! You have solved the crossword!')
           } else {
             alert('Sorry, your solution is incorrect.')
           }
-        }} disabled={[...Array(size.x * size.y)].map((_, index) => Object.fromEntries(Object.entries(solution).filter(([, char]) => char).toSorted(([a], [b]) => parseInt(a) - parseInt(b)))[index.toString()]).filter(Boolean).length != letters.filter(Boolean).length}>
+        }} disabled={letters.some((letter, index) => letter && !solution[index])}>
           Check
         </button>
       </div>
@@ -320,7 +309,7 @@ function Playable({ entries }: {
                       const index = word.x + word.y * size.x;
                       setSelected(index)
                       setLastDirection(word.direction)
-                      onSelectionChange()
+                      onSelectionChange(index, word.direction)
                     }}>{word.clue}</button>
                   </Fragment>
                 })}

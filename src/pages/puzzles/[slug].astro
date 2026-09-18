@@ -11,7 +11,7 @@ import { Nonogram } from "@/components/puzzles/Nonogram";
 import { isPuzzleTypeName } from "@/lib/puzzle-data";
 import MoreStories from "@/components/ui/MoreStories";
 import { croppedSquareUrl } from "@/lib/images";
-import { getSettings, getPuzzleBySlug, getPuzzleByIndex, getMorePosts } from "@/lib/db";
+import { getSettings, getPuzzleBySlug, getPuzzleByIndex, getRecentPosts } from "@/lib/db";
 
 const { slug } = Astro.params;
 const settings = await getSettings();
@@ -59,7 +59,7 @@ const ownArt = puzzle.post_id ? null : croppedSquareUrl(puzzle.cover_image_url);
  * page, and this is the one list that cannot disagree with itself.
  */
 const playable = isPuzzleTypeName(puzzle.type);
-const morePosts = await getMorePosts(2);
+const morePosts = await getRecentPosts(2);
 ---
 
 <BaseLayout title={puzzle.title} settings={settings}>

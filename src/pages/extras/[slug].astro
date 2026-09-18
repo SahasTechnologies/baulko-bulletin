@@ -5,7 +5,7 @@ import CoverImage from "@/components/ui/CoverImage";
 import DateComponent from "@/components/ui/DateComponent";
 import MoreStories from "@/components/ui/MoreStories";
 import Byline from "@/components/ui/Byline";
-import { getSettings, getExtraBySlug, getMorePosts } from "@/lib/db";
+import { getSettings, getExtraBySlug, getRecentPosts } from "@/lib/db";
 
 const { slug } = Astro.params;
 const settings = await getSettings();
@@ -18,7 +18,7 @@ if (!extra) {
   return Astro.rewrite("/404");
 }
 
-const morePosts = await getMorePosts(2);
+const morePosts = await getRecentPosts(2);
 ---
 
 <BaseLayout title={extra.title} description={extra.excerpt || undefined} settings={settings} ogImage={extra.cover_image_url}>

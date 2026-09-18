@@ -3,11 +3,11 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 import PageHeader from "@/components/PageHeader.astro";
 import MoreStories from "@/components/ui/MoreStories";
 import { croppedSquareUrl } from "@/lib/images";
-import { getSettings, getPuzzles, getMorePosts } from "@/lib/db";
+import { getSettings, getPuzzles, getRecentPosts } from "@/lib/db";
 
 const settings = await getSettings();
 const puzzles = await getPuzzles();
-const morePosts = await getMorePosts(2);
+const morePosts = await getRecentPosts(2);
 
 // Pinned to Sydney for the same reason DateComponent is: the server runs in
 // UTC, so without this a puzzle published in the evening reads as the previous

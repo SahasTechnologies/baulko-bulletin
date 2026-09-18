@@ -25,7 +25,8 @@ const RESEND_ENDPOINT = "https://api.resend.com/emails";
 function env(name: string): string {
   const fromProcess = process.env[name];
   if (fromProcess) return fromProcess;
-  return (import.meta.env as Record<string, string | undefined>)[name] || "";
+  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
+  return meta.env?.[name] || "";
 }
 
 export function resendConfigured(): boolean {
