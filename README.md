@@ -13,7 +13,7 @@ Markdown and no build step between typing in the panel and the page changing.
 | Piece | What it does |
 | --- | --- |
 | Astro 7 | Pages, routing and the server routes. Deployed to Vercel through `@astrojs/vercel`. |
-| React 19 islands | The only interactive parts: the image uploader/cropper, the puzzle builder, the theme toggle, the contact form. |
+| React 19 islands | The interactive parts: image/PDF uploading and cropping, puzzle builders/readers, the theme toggle, searchable listings, the PDF reader, and form controls. The contact form itself is a plain HTML form with optional Turnstile. |
 | Tailwind CSS 4 | Styling, via `@tailwindcss/vite`. `src/styles/global.css` holds the hand-written pieces. |
 | Neon Postgres | All content. Reached with `@neondatabase/serverless` over HTTP. |
 | ImageKit | Every image and issue PDF, plus the URL transforms that crop covers. |
@@ -71,9 +71,9 @@ off. The page's own boxes around the island are eased throughout.
 ```bash
 npm install
 npm run dev        # http://localhost:4321
-npm run check      # types, template diagnostics, the generated icons and the tests
-npm test           # just the parser tests in src/lib/*.test.ts
-npm run icons      # regenerate src/lib/icons.generated.ts after adding an icon
+npm run check      # Astro diagnostics, generated assets, logo checks, and all unit tests
+npm test           # run every test in src/lib/*.test.ts (currently 115 tests)
+npm run icons      # regenerate icons and theme-morph geometry after adding an icon
 npm run logo:dark  # regenerate public/bulletin-dark.png after replacing the logo
 npm run logo:light # paint public/bulletin.png's own cut-out (after replacing it)
 npm run logos:check  # are the committed logos the ones the tool makes?
@@ -81,10 +81,16 @@ npm run build      # production build
 npm run preview    # serve the built output
 ```
 
-`npm run dev` needs a reachable `DATABASE_URL`. Without one the public site still
-builds and serves — `src/lib/db.ts` swallows query errors and falls back to empty
-content rather than 500ing — but every listing will be empty and the admin panel
-will say so.
+`npm run dev` needs Node 22.12 or newer and a reachable `DATABASE_URL` for real
+content. Without a database URL the public site still builds and serves —
+`src/lib/db.ts` swallows query errors and falls back to empty content rather than
+500ing — but every listing will be empty and the admin panel will not be usable.
+The admin additionally needs `ADMIN_PASSWORD`; uploads need both ImageKit keys;
+email and CAPTCHA are optional integrations described below.
+
+The default development server listens on `http://localhost:4321` and binds to
+all interfaces because `astro.config.mjs` sets `server.host: true`. Do not expose
+that port publicly when using real environment variables.
 
 ## Routes
 
@@ -351,16 +357,25 @@ ADMIN_SESSION_SECRET="…"        # optional — set it to revoke all sessions b
 IMAGEKIT_PUBLIC_KEY="…"         # required for uploads from the panel
 IMAGEKIT_PRIVATE_KEY="…"        # signs each upload; never leaves the server
 IMAGEKIT_UPLOAD_ENDPOINT="…"    # optional — overrides ImageKit's upload URL
+IMAGEKIT_URL_ENDPOINT="…"       # optional for uploads; needed to delete replaced files safely
 RESEND_API_KEY="…"              # optional — without it, messages are only stored
 RESEND_EMAIL_FROM="…"           # optional — defaults to Resend's shared sender
-TURNSTILE_SECRET="…"            # optional — switches the contact CAPTCHA on
-TURNSTILE_SITE_KEY="…"          # with PUBLIC_TURNSTILE_SITE_KEY, renders the widget
+TURNSTILE_SECRET="…"            # optional — verifies contact submissions when set
+PUBLIC_TURNSTILE_SITE_KEY="…"   # public widget key; TURNSTILE_SITE_KEY also works server-side
 TURNSTILE_HOSTNAMES="…"         # optional — comma-separated hostnames to accept
 ```
 
 Add them to the Vercel project's environment variables as well as your local
 `.env`. Locally, `.env.local` is loaded on top of `.env`, which is the safe place
 to override a value you would rather not edit in place.
+
+Turnstile has two deliberate modes. If `TURNSTILE_SECRET` is unset, the contact
+API accepts submissions without CAPTCHA verification and the form does not load
+the Turnstile widget. If `TURNSTILE_SECRET` is set, provide
+`PUBLIC_TURNSTILE_SITE_KEY` (or the server-side `TURNSTILE_SITE_KEY`) as well;
+the widget then renders and every submission must carry a valid token. A
+hostname allowlist can be supplied with `TURNSTILE_HOSTNAMES`. Configure the
+secret and site key together in production.
 
 `ADMIN_PASSWORD` must never be renamed to `PUBLIC_ADMIN_PASSWORD`: `PUBLIC_*`
 values are inlined into the client bundle. The same goes for the ImageKit keys —
@@ -375,23 +390,45 @@ old file stays in the bucket. Worth checking if files start accumulating.
 
 ## Checks, CI and deploys
 
-`npm run check` runs `astro check`, verifies that the generated icons are still in
-step with the source, and runs the parser tests in `src/lib/*.test.ts`.
-`vercel.json` puts that in front of the build, so a type error — or an icon
-somebody forgot to generate, or a parser case that regressed — fails the
+`npm run check` runs `astro check`, verifies generated icons and theme-morph
+geometry, checks both logos, and runs every test in `src/lib/*.test.ts`.
+`vercel.json` runs `npm run check` before the production build, so a type error,
+stale generated asset, stale logo, or regression in a tested utility fails the
 deployment rather than reaching the live site.
 
-The tests cover the two modules that are pure enough to test without a bundler,
-because Node's type stripping resolves neither path aliases nor packages:
+The current suite contains 115 deterministic Node tests:
 
-- `src/lib/puzzle-data.ts` — the one place stored puzzle text is interpreted.
-  Every public reader and every field in the admin's builder runs through it, so
-  a wrong answer there is a wrong answer everywhere.
-- `src/lib/publish-time.ts` — what a publication date means. Both daylight-saving
-  switches are pinned, along with midnight, which is where a naive formatter
-  renders `24:00` and no time input will take it.
+- `auth.test.ts` — password verification, signed sessions, expiry, renewal,
+  CSRF, cookies, secure-request detection, client IP selection, and login limits.
+- `html-highlight.test.ts` — plain text, tags, attributes, values, comments,
+  declarations, self-closing tags, and half-written HTML.
+- `images.test.ts` — missing images, ImageKit and Sanity transforms, existing
+  query parameters, unknown URLs, and malformed URLs.
+- `imagekit.test.ts` — ImageKit configuration, upload folders, signature
+  generation, endpoint selection, and safe account/path matching.
+- `path-geometry.test.ts` — SVG lines, curves, arcs, rings, areas, bounds,
+  centroids, perimeters, resampling, alignment, interpolation, and generated
+  sun/moon geometry.
+- `publish-time.test.ts` — Sydney dates, midnight, daylight saving, validation,
+  scheduling boundaries, storage round trips, and due checks.
+- `puzzle-data.test.ts` — all eight puzzle formats, valid data, malformed data,
+  error locations, duplicate constraints, and hostile inputs that must not throw.
+- `search.test.ts` — literal and fuzzy matching, multi-term queries, ranking,
+  stable ties, empty queries, and input immutability.
+- `theme-morph.test.ts` — exact animation endpoints, monotonic progress, ray
+  removal, shape bounds, scale/rotation, and ray transforms.
 
-Both need no test framework: they have no imports.
+These are unit tests: they do not contact Neon, ImageKit, Resend, Turnstile,
+ip-api, or a real browser. Database queries, external-service adapters, Astro
+route behavior, React interactions, PDF rendering, uploads, accessibility, and
+responsive layout still need isolated integration or browser tests before they
+can be considered covered. Environment variables alone are not enough: those
+tests also need safe fixtures, mocked side effects, or disposable service
+accounts.
+
+Tests use Node's built-in `node:test` runner and TypeScript's native type
+stripping; no test framework is installed. Run `npm test` for the suite, or
+`npm run check` for the suite plus project consistency checks.
 
 The install command is pinned to `npm ci --include=dev`: the checker and
 TypeScript are devDependencies, and Vercel skips those when `NODE_ENV=production`
@@ -402,6 +439,167 @@ tested.
 
 `.github/workflows/checks.yml` runs the same commands plus a build on every push
 and pull request, which reports faster than waiting on the deploy.
+
+## Runtime behavior and failure modes
+
+The public pages are server-rendered on every request. Database reads use the
+helpers in `src/lib/db.ts`: a missing database URL or failed public query is
+logged and returns fallback settings, an empty list, or a missing item instead
+of crashing the public page. This makes the site degrade to an empty publication
+rather than hide a server error, but it also means a broken database can look
+like "nothing has been published". Check server logs and the admin panel before
+assuming the content was deleted.
+
+Admin reads and writes deliberately behave differently. `src/lib/admin-db.ts`
+throws database errors so a failed save cannot look successful. Admin routes
+re-check the signed session, validate the Origin header, and require a CSRF token
+before writes. Admin responses are not cached, indexed, or framed.
+
+Contact submissions are inserted before email delivery. If Resend is missing,
+misconfigured, or unavailable, the message remains in `contact_submissions` and
+can be read in `/admin/messages`; the sender is not told that email delivery
+failed. Location lookup through ip-api is also best-effort and never prevents a
+message from being stored. When CAPTCHA is enabled, failed verification prevents
+storage.
+
+Uploads go directly from the browser to ImageKit. The app only signs an upload
+and later stores the returned URL. Replacing a cover, puzzle image, or PDF runs a
+best-effort reference check and cleanup after the row is saved. A file that is
+still referenced is kept. A newly uploaded file may not yet be searchable in
+ImageKit, so cleanup can report it as missing and leave an orphan for later
+manual cleanup.
+
+The PDF reader chooses pdf.js's modern or legacy build based on browser support,
+loads workers and wasm from `/public/pdfjs/<version>`, downloads smaller issues
+into memory, streams larger ones, caches nearby rendered pages, and falls back
+to opening the source PDF if the reader cannot load. The reader supports deep
+links such as `/posts/example?page=7`, page sharing, download, keyboard arrows,
+and fullscreen where the browser exposes it.
+
+## Repository map
+
+- `src/pages/` — public pages, admin pages, and server API routes.
+- `src/layouts/` — shared public/admin HTML shells, metadata, theme bootstrap,
+  footer, and layout-transition startup.
+- `public/` — favicon, light/dark logos, `robots.txt`, and generated pdf.js
+  workers/wasm copied by the install/build hook. The generated `public/pdfjs/`
+  directory is intentionally ignored and recreated from the installed
+  `pdfjs-dist` version.
+- `LICENSE` — GNU Affero General Public License v3; the application is licensed
+  under AGPL-3.0, while dependencies and uploaded publication content may have
+  their own licenses or ownership terms.
+- `src/components/ui/` — shared cards, dates, covers, icons, logo, PDF reader,
+  theme toggle, and React islands.
+- `src/components/puzzles/` — the eight interactive puzzle readers.
+- `src/components/admin/` — content forms, HTML editor, media uploader,
+  scheduling control, and puzzle builder.
+- `src/lib/db.ts` — public database reads with graceful fallbacks.
+- `src/lib/admin-db.ts` — admin database reads/writes and media-reference checks.
+- `src/lib/admin.ts` — form validation, CSRF/origin helpers, redirects, and slug
+  handling.
+- `src/lib/auth.ts` — password verification, signed sessions, cookies, CSRF,
+  and login throttling.
+- `src/lib/puzzle-data.ts` — the shared parser and validator for every puzzle.
+- `src/lib/publish-time.ts` — Sydney date/time conversion and scheduling logic.
+- `src/lib/search.ts` — browser-side fuzzy search for public listings.
+- `src/lib/imagekit.ts` and `src/lib/media-cleanup.ts` — signed uploads,
+  ImageKit path validation, reference checks, and replacement cleanup.
+- `src/lib/mail.ts` and `src/lib/geo.ts` — Resend delivery and best-effort sender
+  location lookup.
+- `src/lib/images.ts` — ImageKit/Sanity display transforms.
+- `src/lib/html-highlight.ts` — tolerant HTML syntax highlighting for the admin.
+- `src/lib/nav-fit.ts` and `src/lib/layout-flip.ts` — responsive navigation and
+  layout easing.
+- `src/lib/path-geometry.ts`, `theme-morph.ts`, and generated files — theme icon
+  geometry and animation.
+- `scripts/` — generated pdf.js assets, icons, and morph geometry.
+- `tools/` — logo generation and optional cover maintenance scripts.
+- `.github/workflows/checks.yml` — CI checks on pushes and pull requests.
+
+## Database setup and operational requirements
+
+The repository intentionally has no schema migration. Before enabling the admin,
+create the tables and indexes described in [Data model](#data-model) in the Neon
+project. In addition to the listed columns, the application expects:
+
+- UUID-compatible `id` values on content, author, page, message, and recipient
+  rows.
+- Unique `slug` indexes on `posts`, `extras`, and `puzzles`.
+- A single settings row addressable by `id = 1`.
+- Boolean `active` on `contact_recipients` and boolean `read` on
+  `contact_submissions`.
+- Timestamp-compatible `date` values and `created_at` values.
+- Foreign-key-compatible `author_id` and nullable `post_id` values.
+
+The code does not create or migrate this schema. Treat schema changes as a
+separate, reviewed operational change and test them against a database copy
+before production.
+
+For the optional maintenance scripts, load environment variables from `.env` or
+`.env.local` and review the command before running it:
+
+```bash
+DRY=1 node rename-media.mjs
+node tools/trim-cover-borders.mjs <slug>       # preview only
+node tools/trim-cover-borders.mjs <slug> --write
+node tools/trim-cover-borders.mjs --index      # survey; does not write
+```
+
+`rename-media.mjs` performs database updates and ImageKit re-uploads unless
+`DRY=1`; it does not delete the original files. `trim-cover-borders.mjs --write`
+uploads a new file and repoints a row. Both scripts require a working database,
+ImageKit credentials, network access, and — for border trimming — the optional
+`sharp` package. Do not run either against production without a backup and a
+reviewed dry run.
+
+## Security and privacy notes
+
+The admin uses one shared password and a signed, stateless cookie. This is
+appropriate for one operator but does not provide per-user permissions, audit
+history, or individual session revocation. Changing `ADMIN_PASSWORD` or rotating
+`ADMIN_SESSION_SECRET` invalidates existing sessions.
+
+The login and contact throttles are in-memory. On Vercel they are per function
+instance, not globally shared, so they reduce casual abuse but are not a complete
+distributed rate limiter. Contact sender IP addresses are sent to ip-api for a
+best-effort city/country label and the resulting location is stored with the
+message. Review privacy and retention requirements before enabling this in a
+school environment.
+
+Stored article, page, and footer HTML is rendered intentionally as HTML. The
+current editor is trusted-admin content, not a sanitizer. If more than one
+operator will use the panel, add an allowlist sanitizer and review existing HTML
+before exposing the panel to additional users.
+
+## Known test and coverage boundaries
+
+The deterministic unit suite protects utility behavior, but it is not a claim
+that the full site has been browser-tested. The next testing layers should be:
+
+1. Service-adapter tests with mocked Neon, ImageKit, Resend, Turnstile, ip-api,
+   and upload/download failures.
+2. HTTP integration tests using a disposable database for login, middleware,
+   CRUD, scheduling visibility, contact storage, and response headers.
+3. Browser tests for navigation, hydration, search, theme persistence, puzzles,
+   PDF controls, uploads/cropping, keyboard input, responsive layouts, and
+   accessibility.
+
+Do not point tests at production credentials or a production database. Environment
+variables provide configuration; they do not provide isolation, fixtures, or
+reversible side effects.
+
+## License and ownership
+
+The application source in this repository is licensed under the GNU Affero
+General Public License, version 3; see [`LICENSE`](./LICENSE). That license does
+not automatically grant rights to the newspaper's articles, photographs, PDFs,
+logos, student work, or other uploaded publication content. Confirm permission
+and retention requirements for those materials separately, especially before
+copying content into another environment or publishing a modified deployment.
+
+Third-party packages remain under their own licenses. The deployment also uses
+external services (Neon, ImageKit, Resend, Cloudflare Turnstile, Google Fonts,
+and ip-api), each with its own terms, availability, and privacy implications.
 
 ## Icons
 
@@ -427,11 +625,43 @@ quietly renders as nothing. It reads the SVG from the `ionicons` package when
 installed, otherwise from unpkg, so regenerating on a fresh checkout wants a
 network connection; the committed file is what builds.
 
+### The theme toggle's sun and moon
+
+The theme toggle's icon is one shape that moves between the sun and the moon,
+and both icons come from that same generated set: the build reads `sunny` and
+`moon` out of `src/lib/icons.generated.ts` and works out the geometry a morph
+needs — which of the sun's nine subpaths is the disc and which are its rays, and
+that disc and the moon sampled into two rings of the same length, paired point
+for point. Nothing about either shape is written down by hand, and no morphing
+library is involved: `scripts/sync-theme-morph.mjs` flattens the paths itself,
+using the geometry in `src/lib/path-geometry.ts`, and writes
+`src/lib/theme-morph.generated.ts`. `npm run icons` runs it after the icons, and
+`npm run check` fails when the two have drifted apart.
+
+The icon at rest is the theme a visitor is *in* — a sun while it is light, a moon
+once it is dark. Which of the two is painted is CSS's business, not React's:
+both layers are always in the markup and the `dark` class decides. That matters
+because the theme is chosen by an inline script and the server never knows what
+it chose, so the alternative — render one, correct it after mount — would flash
+the wrong icon on half the page loads. While the move plays, the script owns the
+two outlines, the two opacities, the rays and the rotation, and hands them all
+back to the stylesheet when it lands. Both layers inherit `currentColor`, like
+all other icons, so the toggle changes shape and opacity without changing colour
+relative to the rest of the interface.
+
+What the move looks like at any moment is `frameAt` in
+`src/lib/theme-morph.ts` — a pure function from progress to shape, which is what
+makes the animation testable: `src/lib/theme-morph.test.ts` holds it to both
+ends, to never running backwards, to the rays being gone before the shape has
+finished changing, and to the whole move staying inside the icon's box.
+
 ## Tools
 
 - `scripts/sync-pdfjs-assets.mjs` — copies pdf.js's assets into `public/pdfjs`
   (runs on `npm install` and before the build).
 - `scripts/sync-icons.mjs` — the icon generator above.
+- `scripts/sync-theme-morph.mjs` — derives the theme toggle's morph geometry
+  from the `sunny` and `moon` icons in that generated set.
 - `tools/trim-cover-borders.mjs <slug>` — removes the even border a cover that was
   photographed against a light backdrop leaves behind. Add `--write` to upload
   the result and repoint the row, `--index` to survey every cover.

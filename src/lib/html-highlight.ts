@@ -29,7 +29,8 @@ type Push = (text: string, kind: HtmlTokenKind) => void;
 function pushTag(tag: string, push: Push): void {
   let index = 0;
 
-  const bracket = /^<\/?/.exec(tag);
+  const declaration = /^<!/.test(tag);
+  const bracket = declaration ? /^<!/.exec(tag) : /^<\/?/.exec(tag);
   if (bracket) {
     push(bracket[0], "punct");
     index = bracket[0].length;
@@ -112,7 +113,11 @@ export function tokenizeHtml(source: string): HtmlToken[] {
 
   while (index < source.length) {
     const open = source.indexOf("<", index);
-    if (open < 0) break;
+    if (open < 0) {
+      text += source.slice(index);
+      index = source.length;
+      break;
+    }
 
     text += source.slice(index, open);
 

@@ -11,6 +11,13 @@ interface ImportMetaEnv {
   readonly IMAGEKIT_PUBLIC_KEY?: string;
   readonly IMAGEKIT_PRIVATE_KEY?: string;
   readonly IMAGEKIT_URL_ENDPOINT?: string;
+  readonly IMAGEKIT_UPLOAD_ENDPOINT?: string;
+  readonly RESEND_API_KEY?: string;
+  readonly RESEND_EMAIL_FROM?: string;
+  readonly TURNSTILE_SECRET?: string;
+  readonly TURNSTILE_HOSTNAMES?: string;
+  readonly TURNSTILE_SITE_KEY?: string;
+  readonly PUBLIC_TURNSTILE_SITE_KEY?: string;
 }
 
 interface ImportMeta {

@@ -20,11 +20,8 @@ const FALLBACK_SETTINGS: Settings = {
 };
 
 function databaseUrl(): string {
-  return (
-    (import.meta.env.DATABASE_URL as string | undefined) ||
-    process.env.DATABASE_URL ||
-    ""
-  );
+  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
+  return process.env.DATABASE_URL || meta.env?.DATABASE_URL || "";
 }
 
 // Plain row results: no array mode, no full-result envelope. Spelling the two
@@ -187,6 +184,31 @@ export async function getMorePosts(limit = 100): Promise<PostCard[]> {
   }, []);
 }
 
+/** Recent issues for pages that already have their own primary item. */
+export async function getRecentPosts(
+  limit = 100,
+  excludeId?: string
+): Promise<PostCard[]> {
+  return run(async (sql) => {
+    const rows = excludeId
+      ? await sql`
+          SELECT ${sql.unsafe(POST_CARD_COLUMNS)}
+          FROM posts
+          WHERE date <= now() AND id <> ${excludeId}
+          ORDER BY date DESC
+          LIMIT ${limit}
+        `
+      : await sql`
+          SELECT ${sql.unsafe(POST_CARD_COLUMNS)}
+          FROM posts
+          WHERE date <= now()
+          ORDER BY date DESC
+          LIMIT ${limit}
+        `;
+    return rows.map((row) => mapPostCard(row as Record<string, unknown>));
+  }, []);
+}
+
 // Every issue including the hero, newest first — what the /posts listing shows.
 export async function getAllPostCards(): Promise<PostCard[]> {
   return run(async (sql) => {
@@ -219,7 +241,7 @@ export async function getAllPostSlugs(): Promise<string[]> {
 // reads "Anonymous".
 export async function getAllExtras(limit?: number): Promise<ExtraCard[]> {
   return run(async (sql) => {
-    const rows = limit
+    const rows = limit !== undefined
       ? await sql`
           SELECT extras.id, extras.title, extras.slug, extras.excerpt,
                  extras.cover_image_url, extras.cover_image_alt, extras.date,

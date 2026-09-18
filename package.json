@@ -14,9 +14,10 @@
     "build": "astro build",
     "preview": "astro preview --host",
     "astro": "astro",
-    "check": "astro check && node scripts/sync-icons.mjs --check && npm run logos:check && npm test",
+    "check": "astro check && node scripts/sync-icons.mjs --check && node scripts/sync-theme-morph.mjs --check && npm run logos:check && npm test",
     "test": "node --experimental-strip-types --test \"src/lib/*.test.ts\"",
-    "icons": "node scripts/sync-icons.mjs",
+    "icons": "node scripts/sync-icons.mjs && node scripts/sync-theme-morph.mjs",
+    "morph": "node scripts/sync-theme-morph.mjs",
     "logo:dark": "node tools/make-logo-dark.mjs",
     "logo:light": "node tools/make-logo-dark.mjs --light",
     "logos:check": "node tools/make-logo-dark.mjs --check && node tools/make-logo-dark.mjs --light --check"

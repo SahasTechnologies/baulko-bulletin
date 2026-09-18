@@ -6,7 +6,7 @@ import PdfViewer from "@/components/ui/PdfViewer";
 import MoreStories from "@/components/ui/MoreStories";
 import Byline from "@/components/ui/Byline";
 import { croppedSquareUrl } from "@/lib/images";
-import { getSettings, getPostBySlug, getMorePosts, getPuzzlesForPost } from "@/lib/db";
+import { getSettings, getPostBySlug, getRecentPosts, getPuzzlesForPost } from "@/lib/db";
 
 const { slug } = Astro.params;
 const settings = await getSettings();
@@ -19,7 +19,7 @@ if (!post) {
   return Astro.rewrite("/404");
 }
 
-const morePosts = (await getMorePosts(8)).filter((p) => p.id !== post.id).slice(0, 2);
+const morePosts = await getRecentPosts(2, post.id);
 
 // The puzzles that ran alongside this issue, in the same order (and therefore
 // with the same /puzzles/<index> URLs) as the puzzles page.

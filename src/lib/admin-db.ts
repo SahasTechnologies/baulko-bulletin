@@ -16,7 +16,8 @@ type Sql = ReturnType<typeof neon<false, false>>;
 const NO_UUID = "00000000-0000-0000-0000-000000000000";
 
 function sqlClient(): Sql {
-  const url = process.env.DATABASE_URL || import.meta.env.DATABASE_URL;
+  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
+  const url = process.env.DATABASE_URL || meta.env?.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
   return neon(url);
 }
@@ -109,7 +110,7 @@ export async function getRow(key: EntityKey, id: string): Promise<ContentRow | n
     return rows[0] ? rowFrom(rows[0] as Record<string, unknown>) : null;
   }
   const rows = await sql`
-    SELECT puzzles.id, puzzles.title, puzzles.type, puzzles.data, puzzles.date,
+    SELECT puzzles.id, puzzles.slug, puzzles.title, puzzles.type, puzzles.data, puzzles.date,
            puzzles.cover_image_url, puzzles.post_id, authors.name AS author_name
     FROM puzzles
     LEFT JOIN authors ON authors.id = puzzles.author_id

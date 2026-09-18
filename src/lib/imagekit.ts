@@ -33,7 +33,8 @@ export type UploadKind = "image" | "pdf";
 function env(name: string): string {
   const fromProcess = process.env[name];
   if (fromProcess) return fromProcess.trim();
-  const fromImportMeta = (import.meta.env as Record<string, string | undefined>)[name];
+  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
+  const fromImportMeta = meta.env?.[name];
   return (fromImportMeta || "").trim();
 }
 

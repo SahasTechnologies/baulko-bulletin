@@ -117,7 +117,7 @@ function parseInto(
   data: string
 ): { store: Store } | { error: string } {
   if (!data.trim()) return { store };
-  if (type === "Crossword") {
+  if (type === "Crossword" || type === "Cross-number") {
     const rows: CrosswordRow[] = [];
     for (const raw of data.split("\n")) {
       const line = raw.trim();
