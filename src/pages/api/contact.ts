@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { neon } from "@neondatabase/serverless";
+import { readEnv } from "@/lib/env";
 import { placeFor } from "@/lib/geo";
 import { notifyContactRecipients } from "@/lib/mail";
 
@@ -15,7 +16,7 @@ const TURNSTILE_ENDPOINT = "https://challenges.cloudflare.com/turnstile/v0/sitev
  * deployments, a new custom domain, Cloudflare's test keys, …).
  */
 function allowedTurnstileHostnames() {
-  return (process.env.TURNSTILE_HOSTNAMES || "")
+  return readEnv("TURNSTILE_HOSTNAMES")
     .split(",")
     .map((h) => h.trim())
     .filter(Boolean);
@@ -30,7 +31,7 @@ function allowedTurnstileHostnames() {
  * verified and a bad or missing token is rejected.
  */
 async function verifyTurnstile(token: string, remoteIp: string | null) {
-  const secret = process.env.TURNSTILE_SECRET;
+  const secret = readEnv("TURNSTILE_SECRET");
   if (!secret) {
     console.warn(
       "[contact] TURNSTILE_SECRET is not set — accepting this submission WITHOUT captcha verification. " +
@@ -87,8 +88,7 @@ async function verifyTurnstile(token: string, remoteIp: string | null) {
 }
 
 function getSql() {
-  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
-  const url = process.env.DATABASE_URL || meta.env?.DATABASE_URL;
+  const url = readEnv("DATABASE_URL");
   if (!url) throw new Error("DATABASE_URL is not set");
   return neon(url);
 }

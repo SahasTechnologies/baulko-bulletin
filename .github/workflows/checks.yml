@@ -22,9 +22,19 @@ jobs:
       # this repo serves from public/pdfjs/.
       - run: npm ci
 
-      # Types, template diagnostics, and whether src/lib/icons.generated.ts is
-      # still in step with the icons the source asks for.
+      # Types, template diagnostics, whether src/lib/icons.generated.ts is still
+      # in step with the icons the source asks for, whether anything in the tree
+      # looks like a live credential, and the unit tests.
       - run: npm run check
+
+      # Known vulnerabilities in what actually ships. Reported rather than
+      # fatal on purpose: a new advisory against a transitive dependency would
+      # otherwise fail every open pull request at once, which teaches people to
+      # ignore this job. It is here to be seen in the log and the summary —
+      # `npm run audit` is the same check locally, and the step is one word away
+      # from being a gate.
+      - run: npm run audit
+        continue-on-error: true
 
       # Nothing here needs the database: every page is server-rendered, so no
       # query runs at build time.

@@ -3,7 +3,7 @@ import AdminLayout from "@/layouts/AdminLayout.astro";
 import Flash from "@/components/admin/Flash.astro";
 import Icon from "@/components/ui/Icon.astro";
 import { flashFromUrl } from "@/lib/admin";
-import { adminPassword, adminConfigured } from "@/lib/auth";
+import { adminConfigured, adminHashMalformed } from "@/lib/auth";
 import { getCounts, listAuthorCount, type AdminCounts } from "@/lib/admin-db";
 
 export const prerender = false;
@@ -23,7 +23,7 @@ try {
 }
 
 const configured = adminConfigured();
-const weakPassword = configured && adminPassword().length < 12;
+const unusableHash = adminHashMalformed();
 
 const cards = [
   {
@@ -56,20 +56,29 @@ const cards = [
   {
     !configured && (
       <div class="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-5">
-        <p class="mb-1 font-semibold">ADMIN_PASSWORD is not set.</p>
+        <p class="mb-1 font-semibold">ADMIN_PASSWORD_HASH is not set.</p>
         <p class="opacity-80">
           Add it to <code>.env</code> locally and to the Vercel project's environment variables, then
-          redeploy. Logins are rejected until then.
+          redeploy — <code>npm run password:hash</code> prints one for a password. Logins are rejected
+          until then.
         </p>
       </div>
     )
   }
 
-  {weakPassword && (
-    <p class="mb-8 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-6 py-5">
-      ADMIN_PASSWORD is shorter than 12 characters — consider a long random passphrase.
-    </p>
-  )}
+  {
+    unusableHash && (
+      <div class="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-5" role="alert">
+        <p class="mb-1 font-semibold">ADMIN_PASSWORD_HASH could not be read.</p>
+        <p class="opacity-80">
+          It should look like <code>pbkdf2-sha256.&lt;iterations&gt;.&lt;salt&gt;.&lt;hash&gt;</code>. A
+          value containing <code>$</code> loses everything after it in <code>.env</code>, which is
+          the usual cause — regenerate it with <code>npm run password:hash</code> and paste the
+          whole line.
+        </p>
+      </div>
+    )
+  }
 
   {dbError && (
     <div class="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-6 py-5">

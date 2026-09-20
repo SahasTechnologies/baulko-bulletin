@@ -11,6 +11,8 @@
  */
 
 import { getContactRecipients } from "@/lib/db";
+import { readEnv } from "@/lib/env";
+import { retryWithBackoff } from "@/lib/retry";
 
 // Resend's shared sender works without a verified domain, but it only delivers
 // to the Resend account owner — RESEND_EMAIL_FROM overrides it in production.
@@ -18,15 +20,19 @@ const DEFAULT_FROM = "Baulko Bulletin <onboarding@resend.dev>";
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 /**
- * `process.env` is the runtime value on Vercel; Vite only fills
- * `import.meta.env` from `.env` during `astro dev`. Reading both keeps a local
- * run from silently skipping the send.
+ * The whole send, retries included, has to fit inside the visitor's wait.
+ *
+ * A single attempt used to be allowed 15 seconds, which on its own is longer
+ * than a serverless function is given — so the previous behaviour under a slow
+ * Resend was a request that never answered. Nine seconds is enough for a normal
+ * send several times over, and now covers every attempt rather than one.
  */
-function env(name: string): string {
-  const fromProcess = process.env[name];
-  if (fromProcess) return fromProcess;
-  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
-  return meta.env?.[name] || "";
+const SEND_DEADLINE_MS = 9_000;
+const PER_ATTEMPT_MS = 6_000;
+
+/** Both runtimes are handled in `lib/env.ts`; this is just the typed door to it. */
+function env(name: "RESEND_API_KEY" | "RESEND_EMAIL_FROM"): string {
+  return readEnv(name);
 }
 
 export function resendConfigured(): boolean {
@@ -37,25 +43,42 @@ export function senderAddress(): string {
   return env("RESEND_EMAIL_FROM") || DEFAULT_FROM;
 }
 
-export async function sendEmail(input: {
+export interface SendInput {
   to: string[];
   subject: string;
   text: string;
   html: string;
   replyTo?: string;
-}): Promise<{ ok: boolean; error?: string }> {
-  const apiKey = env("RESEND_API_KEY");
-  if (!apiKey) return { ok: false, error: "RESEND_API_KEY is not set." };
-  if (!input.to.length) return { ok: false, error: "There is nobody to send to." };
+}
 
+/**
+ * One attempt at the send. Its own outcome type, because the retry loop needs
+ * to know whether trying again could plausibly help: a 429 or a 5xx might, a
+ * 422 ("domain is not verified") never will, and an unreachable network might.
+ */
+type Attempt =
+  | { ok: true }
+  | { ok: false; retryable: boolean; error: string };
+
+async function attemptSend(
+  input: SendInput,
+  apiKey: string,
+  idempotencyKey: string,
+  timeoutMs: number
+): Promise<Attempt> {
   try {
     const res = await fetch(RESEND_ENDPOINT, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        // The same key on every try, so a retry after a connection that died
+        // mid-request cannot send the message twice. Resend ignores a repeat of
+        // a key it has seen in the last day. See
+        // https://resend.com/docs/dashboard/emails/idempotency-keys
+        "Idempotency-Key": idempotencyKey,
       },
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
         from: senderAddress(),
         to: input.to,
@@ -70,13 +93,54 @@ export async function sendEmail(input: {
       const detail = await res.text().catch(() => "");
       console.error("[mail] Resend rejected the send:", res.status, detail);
       // Resend explains itself well ("domain is not verified"), so pass it on.
-      return { ok: false, error: `Resend said ${res.status}: ${detail.slice(0, 400)}` };
+      return {
+        ok: false,
+        retryable: res.status === 429 || res.status >= 500,
+        error: `Resend said ${res.status}: ${detail.slice(0, 400)}`,
+      };
     }
     return { ok: true };
   } catch (err) {
     console.error("[mail] Resend request failed:", err);
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return { ok: false, retryable: true, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * Sends one email, trying again briefly when the failure looks temporary.
+ *
+ * A contact submission is already in the database by the time this runs, so a
+ * failed send loses nothing but the notification — which is exactly why it is
+ * worth a second attempt now: nobody is watching for the email that never came.
+ * The whole loop is bounded by a deadline, because the visitor is still waiting
+ * on the form's response while it runs.
+ */
+export async function sendEmail(input: SendInput): Promise<{ ok: boolean; error?: string }> {
+  const apiKey = env("RESEND_API_KEY");
+  if (!apiKey) return { ok: false, error: "RESEND_API_KEY is not set." };
+  if (!input.to.length) return { ok: false, error: "There is nobody to send to." };
+
+  const idempotencyKey = crypto.randomUUID();
+  const outcome = await retryWithBackoff<Attempt>(
+    // The request timeout follows what is left of the deadline, so the three
+    // attempts together cannot outlast the function that is waiting on them —
+    // and the floor keeps a last, hopeless attempt from being launched with
+    // five milliseconds to run in.
+    ({ remainingMs }) =>
+      attemptSend(input, apiKey, idempotencyKey, Math.max(1_000, Math.min(PER_ATTEMPT_MS, remainingMs))),
+    {
+      attempts: 3,
+      baseDelayMs: 300,
+      factor: 3,
+      maxDelayMs: 2_000,
+      deadlineMs: SEND_DEADLINE_MS,
+      shouldRetry: (result) => result?.ok === false && result.retryable,
+      onRetry: ({ attempt, delayMs }) =>
+        console.warn(`[mail] send attempt ${attempt} failed — retrying in ${delayMs}ms`),
+    }
+  );
+
+  return outcome.ok ? { ok: true } : { ok: false, error: outcome.error };
 }
 
 export function escapeHtml(value: string): string {

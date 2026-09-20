@@ -1,6 +1,7 @@
 ---
 import "@/styles/global.css";
 import Icon from "@/components/ui/Icon.astro";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 import type { Settings } from "@/types/content";
 
 interface Props {
@@ -18,6 +19,11 @@ const pageDescription = description || settings.description;
 // crawlers resolve og:image against their own context, not ours, so a relative
 // path like "/bulletin.png" (which the admin accepts) has to be made absolute
 // here or it silently resolves to nothing.
+// The footer is stored HTML rendered with `set:html`, so it is filtered here as
+// well as when it is saved — rows written before that filter existed are still
+// in the database, and this is the element that runs on every single page.
+const footerHtml = sanitizeHtml(settings.footer_html);
+
 const ogImageSource = ogImage || settings.og_image_url;
 const ogImageUrl = (() => {
   if (!ogImageSource) return null;
@@ -59,10 +65,10 @@ const ogImageUrl = (() => {
 
       <footer class="px-6 mt-8">
         <div class="container mx-auto mb-10 px-8 md:px-10 bg-black/5 dark:bg-white/5 rounded-2xl">
-          {settings.footer_html ? (
+          {footerHtml ? (
             <div
               class="prose prose-sm dark:prose-invert text-pretty w-full max-w-none py-12 text-center md:py-20"
-              set:html={settings.footer_html}
+              set:html={footerHtml}
             />
           ) : (
             <div class="flex flex-col gap-10 py-16 md:py-20 lg:flex-row lg:items-center lg:justify-between lg:gap-16">

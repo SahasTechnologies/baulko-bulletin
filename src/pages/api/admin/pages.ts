@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { savePage } from "@/lib/admin-db";
 import { csrfOk, flashTo, jsonResponse, originAllowed, readLimited, requireAdmin } from "@/lib/admin";
+import { sanitizeHtmlWithReport } from "@/lib/sanitize-html";
 
 export const prerender = false;
 
@@ -47,13 +48,23 @@ export const POST: APIRoute = async ({ request }) => {
     return flashTo(back, "error", "Social preview image URL must be a full http(s) URL or a path starting with “/”.");
   }
 
+  // The body is rendered with `set:html` on the public page, so it is filtered
+  // here as well as on the way out — see `lib/sanitize-html.ts`.
+  const { html, removed } = sanitizeHtmlWithReport(body.value);
+
   try {
     await savePage(slug, {
       title: title.value,
-      body_html: body.value,
+      body_html: html,
       og_image_url: ogImage.value || null,
     });
-    return flashTo(back, "ok", "Page saved.");
+    return flashTo(
+      back,
+      "ok",
+      removed.length
+        ? `Page saved, with unsafe markup removed (${removed.length} item${removed.length === 1 ? "" : "s"}).`
+        : "Page saved."
+    );
   } catch (err) {
     console.error("[admin] page save failed:", err);
     const message = err instanceof Error ? err.message : String(err);

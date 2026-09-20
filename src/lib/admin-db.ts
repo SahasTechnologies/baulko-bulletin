@@ -8,6 +8,7 @@
  */
 
 import { neon } from "@neondatabase/serverless";
+import { readEnv } from "@/lib/env";
 import type { ContentRow, EntityKey } from "@/lib/admin-entities";
 import type { AdminSession } from "@/lib/auth";
 
@@ -16,8 +17,7 @@ type Sql = ReturnType<typeof neon<false, false>>;
 const NO_UUID = "00000000-0000-0000-0000-000000000000";
 
 function sqlClient(): Sql {
-  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
-  const url = process.env.DATABASE_URL || meta.env?.DATABASE_URL;
+  const url = readEnv("DATABASE_URL");
   if (!url) throw new Error("DATABASE_URL is not set");
   return neon(url);
 }

@@ -72,7 +72,7 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    const { values, error } = validateEntityForm(def, form);
+    const { values, error, notes } = validateEntityForm(def, form);
     if (error) return flashTo(returnTo, "error", error);
 
     // Read the row before it is written, so the media it used to point at is
@@ -99,7 +99,7 @@ export const POST: APIRoute = async ({ request }) => {
     return flashTo(
       `${base}/${saved.id}`,
       "ok",
-      `${editing ? `${def.singular} updated.` : `${def.singular} created.`}${removed}`
+      `${editing ? `${def.singular} updated.` : `${def.singular} created.`}${notes.length ? ` ${notes.join(" ")}` : ""}${removed}`
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

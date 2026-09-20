@@ -6,6 +6,7 @@ import DateComponent from "@/components/ui/DateComponent";
 import MoreStories from "@/components/ui/MoreStories";
 import Byline from "@/components/ui/Byline";
 import { getSettings, getExtraBySlug, getRecentPosts } from "@/lib/db";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 
 const { slug } = Astro.params;
 const settings = await getSettings();
@@ -17,6 +18,9 @@ if (!extra) {
   Astro.response.status = 404;
   return Astro.rewrite("/404");
 }
+
+// Filtered on the way out as well as on the way in — see about.astro.
+const content = sanitizeHtml(extra.content);
 
 const morePosts = await getRecentPosts(2);
 ---
@@ -38,7 +42,7 @@ const morePosts = await getRecentPosts(2);
         <div class="mb-6 text-lg opacity-70">
           <DateComponent client:load dateString={extra.date} />
         </div>
-        <div class="prose prose-lg dark:prose-invert max-w-none" set:html={extra.content} />
+        <div class="prose prose-lg dark:prose-invert max-w-none" set:html={content} />
       </div>
     </article>
     <hr class="border-black/10 dark:border-white/10 mb-24 mt-28" />

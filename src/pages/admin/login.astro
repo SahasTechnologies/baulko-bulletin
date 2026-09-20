@@ -3,7 +3,7 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 import Icon from "@/components/ui/Icon.astro";
 import Logo from "@/components/ui/Logo.astro";
 import { getSettings } from "@/lib/db";
-import { adminConfigured, adminPassword } from "@/lib/auth";
+import { adminConfigured, adminHashMalformed } from "@/lib/auth";
 import { flashFromUrl, safeAdminPath } from "@/lib/admin";
 
 export const prerender = false;
@@ -15,7 +15,7 @@ if (Astro.locals.adminSession) {
 
 const settings = await getSettings();
 const configured = adminConfigured();
-const weakPassword = configured && adminPassword().length < 12;
+const unusableHash = adminHashMalformed();
 const flash = flashFromUrl(Astro.url);
 const next = safeAdminPath(Astro.url.searchParams.get("next"));
 const inputClass =
@@ -38,12 +38,28 @@ const inputClass =
           <div class="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-6 py-5 text-lg">
             <p class="mb-2 font-semibold">Admin is not configured.</p>
             <p class="opacity-80">
-              Set <code>ADMIN_PASSWORD</code> in the environment (and in your Vercel project
-              settings) to switch the panel on. Until then every login is rejected.
+              Set <code>ADMIN_PASSWORD_HASH</code> in the environment (and in your Vercel project
+              settings) to switch the panel on — <code>npm run password:hash</code> prints the value
+              for a password. Until then every login is rejected.
             </p>
           </div>
         ) : (
           <>
+            {
+              unusableHash && (
+                <p
+                  class="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 px-5 py-4 text-sm"
+                  role="alert"
+                >
+                  <code>ADMIN_PASSWORD_HASH</code> is set but is not a hash this build can
+                  read. It should look like{" "}
+                  <code>pbkdf2-sha256.&lt;iterations&gt;.&lt;salt&gt;.&lt;hash&gt;</code> — paste the
+                  output of <code>npm run password:hash</code> again, in full. Logins are refused
+                  until it parses.
+                </p>
+              )
+            }
+
             {flash && (
               <div
                 class:list={[
@@ -56,13 +72,6 @@ const inputClass =
               >
                 {flash.message}
               </div>
-            )}
-
-            {weakPassword && (
-              <p class="mb-6 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-5 py-4 text-sm">
-                Heads up: <code>ADMIN_PASSWORD</code> is shorter than 12 characters. Use a long
-                random passphrase.
-              </p>
             )}
 
             <form action="/api/admin/login" method="POST" class="space-y-5">
