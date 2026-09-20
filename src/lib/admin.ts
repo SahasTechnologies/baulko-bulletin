@@ -13,6 +13,7 @@ import { requestSession, verifyCsrf } from "@/lib/auth";
 import type { EntityDef, FieldDef, FieldName } from "@/lib/admin-entities";
 import { formatPuzzleProblems, parsePuzzleData } from "@/lib/puzzle-data";
 import { combineDateTime, isDateInput, isTimeInput } from "@/lib/publish-time";
+import { sanitizeHtmlWithReport } from "@/lib/sanitize-html";
 
 /** Defence in depth: middleware also gates these routes. */
 export async function requireAdmin(request: Request): Promise<AdminSession | null> {
@@ -141,6 +142,19 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export interface ValidatedValues {
   values: Record<string, string>;
   error: string | null;
+  /**
+   * What validation changed rather than rejected — today, the markup the HTML
+   * filter removed. The save still goes through, and the editor is told what
+   * did not survive, because silently re-writing their copy would be worse.
+   */
+  notes: string[];
+}
+
+/** "script", "a[onclick]" … trimmed to something a flash message can hold. */
+function describeRemovals(removed: string[]): string {
+  const unique = [...new Set(removed)];
+  if (unique.length <= 4) return unique.join(", ");
+  return `${unique.slice(0, 4).join(", ")} and ${unique.length - 4} more`;
 }
 
 function readField(form: FormData, field: FieldDef): string {
@@ -156,13 +170,14 @@ function readField(form: FormData, field: FieldDef): string {
  */
 export function validateEntityForm(def: EntityDef, form: FormData): ValidatedValues {
   const values: Record<string, string> = {};
+  const notes: string[] = [];
 
   for (const field of def.fields) {
     const value = readField(form, field);
     values[field.name] = value;
 
     if (field.required && !value) {
-      return { values, error: `${field.label} is required.` };
+      return { values, error: `${field.label} is required.`, notes };
     }
     if (!value) continue;
 
@@ -170,12 +185,12 @@ export function validateEntityForm(def: EntityDef, form: FormData): ValidatedVal
     // Excerpt should be told, not have it quietly cut in half.
     const max = field.maxLength ?? maxLengthFor(field.name);
     if (value.length > max) {
-      return { values, error: `${field.label} is too long (maximum ${max} characters).` };
+      return { values, error: `${field.label} is too long (maximum ${max} characters).`, notes };
     }
 
     // Uploaded media lands here as a URL, so it is validated exactly like one.
     if ((field.type === "url" || field.type === "image" || field.type === "pdf") && !isAllowedUrl(value)) {
-      return { values, error: `${field.label} must be a full http(s) URL or a path starting with "/".` };
+      return { values, error: `${field.label} must be a full http(s) URL or a path starting with "/".`, notes };
     }
     // A publication date carries the moment it goes live. The date is a Sydney
     // calendar day and the time beside it is Sydney wall clock; the two are
@@ -184,27 +199,28 @@ export function validateEntityForm(def: EntityDef, form: FormData): ValidatedVal
     // day the editor picked.
     if (field.type === "date") {
       if (!isDateInput(value)) {
-        return { values, error: `${field.label} must be a valid date.` };
+        return { values, error: `${field.label} must be a valid date.`, notes };
       }
       const rawTime = form.get(PUBLISH_TIME_FIELD);
       const time = typeof rawTime === "string" ? rawTime.trim() : "";
       if (time && !isTimeInput(time)) {
-        return { values, error: "Publish time must be a time of day, such as 08:00." };
+        return { values, error: "Publish time must be a time of day, such as 08:00.", notes };
       }
       values[field.name] = combineDateTime(value, time);
       continue;
     }
     if (field.type === "issue" && !UUID_RE.test(value)) {
-      return { values, error: `${field.label} must be one of the listed issues.` };
+      return { values, error: `${field.label} must be one of the listed issues.`, notes };
     }
     // Only options declared up front can be checked; `issue` options come from the database.
     if (field.type === "select" && field.options && !field.options.includes(value)) {
-      return { values, error: `${field.label} must be one of: ${field.options.join(", ")}.` };
+      return { values, error: `${field.label} must be one of: ${field.options.join(", ")}.`, notes };
     }
     if (field.name === "slug" && !/^[a-z0-9][a-z0-9-]*$/.test(value)) {
       return {
         values,
         error: "Slug may only contain lowercase letters, numbers and hyphens.",
+        notes,
       };
     }
     // Puzzle data is what the public readers parse, so it is held to their
@@ -225,12 +241,25 @@ export function validateEntityForm(def: EntityDef, form: FormData): ValidatedVal
         return {
           values,
           error: `Puzzle data does not fit the ${type || "chosen"} format — ${detail}`,
+          notes,
         };
+      }
+    }
+    // The HTML fields are the only ones the public site renders as markup, so
+    // they are the only ones that can carry a script to a reader. Filtered on
+    // the way in (see `lib/sanitize-html.ts`, which also explains why the pages
+    // filter again on the way out) and reported rather than silently rewritten:
+    // an editor who pasted a `<style>` block needs to know it is gone.
+    if (field.html) {
+      const { html, removed } = sanitizeHtmlWithReport(value);
+      values[field.name] = html;
+      if (removed.length) {
+        notes.push(`${field.label}: unsafe markup removed (${describeRemovals(removed)}).`);
       }
     }
   }
 
-  return { values, error: null };
+  return { values, error: null, notes };
 }
 
 /**

@@ -7,6 +7,7 @@ import MoreStories from "@/components/ui/MoreStories";
 import Byline from "@/components/ui/Byline";
 import { croppedSquareUrl } from "@/lib/images";
 import { getSettings, getPostBySlug, getRecentPosts, getPuzzlesForPost } from "@/lib/db";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 
 const { slug } = Astro.params;
 const settings = await getSettings();
@@ -18,6 +19,9 @@ if (!post) {
   Astro.response.status = 404;
   return Astro.rewrite("/404");
 }
+
+// Filtered on the way out as well as on the way in — see about.astro.
+const content = sanitizeHtml(post.content);
 
 const morePosts = await getRecentPosts(2, post.id);
 
@@ -43,7 +47,7 @@ const puzzles = await getPuzzlesForPost(post.id);
       {post.pdf_url ? (
         <PdfViewer client:load src={post.pdf_url} title={post.title} />
       ) : (
-        <div class="prose prose-lg dark:prose-invert max-w-2xl mx-auto" set:html={post.content} />
+        <div class="prose prose-lg dark:prose-invert max-w-2xl mx-auto" set:html={content} />
       )}
     </article>
 

@@ -14,6 +14,12 @@
 
 import { createHmac, randomUUID } from "node:crypto";
 
+// Relative, with the extension, rather than the `@/lib/…` alias the rest of the
+// app uses: this module is imported directly by a test, and Node's test runner
+// resolves real paths while the alias is a bundler setting.
+import { readEnvTrimmed, type ServerEnvName } from "./env.ts";
+import { retryWithBackoff } from "./retry.ts";
+
 /** Long enough for a slow upload on a school connection, short enough to be useless if leaked. */
 const AUTH_TTL_SECONDS = 10 * 60;
 
@@ -27,15 +33,12 @@ export interface UploadAuth {
 export type UploadKind = "image" | "pdf";
 
 /**
- * Same precedence as the admin secrets: `process.env` holds the runtime value on
- * Vercel, while `import.meta.env` is what `astro dev` populates from `.env`.
+ * Same precedence as the admin secrets — see `lib/env.ts`, which owns the
+ * runtime-dependent part and is the only place reading `import.meta.env`.
+ * Trimmed here because every value below is pasted into a dashboard.
  */
-function env(name: string): string {
-  const fromProcess = process.env[name];
-  if (fromProcess) return fromProcess.trim();
-  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
-  const fromImportMeta = meta.env?.[name];
-  return (fromImportMeta || "").trim();
+function env(name: ServerEnvName): string {
+  return readEnvTrimmed(name);
 }
 
 export function imageKitConfigured(): boolean {
@@ -137,9 +140,42 @@ export type DeleteOutcome = "deleted" | "missing" | "unconfigured" | "failed";
  * alike. That is why the caller is told "missing" rather than an error when
  * nothing comes back — a file replaced within seconds of its own upload is the
  * one case this cannot see, and it stays in the bucket rather than being
- * reported as a failure. Everything else it deletes is old enough to be found
- * on the first try, so no retry is worth the latency on the save.
+ * reported as a failure. Waiting for the index would mean holding a save open
+ * for eleven seconds, so that case still is not retried.
+ *
+ * What *is* retried is a connection that never answered or a server that
+ * admits it is broken — see `imageKitFetch`. Both would otherwise be logged as
+ * a failed delete and forgotten, and the only cost of repeating them is a few
+ * hundred milliseconds on a save that was already going to end in a warning.
  */
+/**
+ * ImageKit's API over a short, bounded retry.
+ *
+ * Only a throw (no answer at all) or a 5xx (an answer that says "not my fault")
+ * is repeated. Anything else is the API's real reply — a 401 for a rotated key,
+ * a 404 for a file that is already gone — and repeating it would just make the
+ * editor wait longer for the same outcome.
+ */
+/** No single request is allowed to sit on the connection for the whole budget. */
+const REQUEST_DEADLINE_MS = 6_000;
+const PER_ATTEMPT_MS = 4_000;
+
+function imageKitFetch(url: string, init: RequestInit): Promise<Response> {
+  return retryWithBackoff(
+    ({ remainingMs }) =>
+      fetch(url, { ...init, signal: AbortSignal.timeout(Math.max(1_000, Math.min(PER_ATTEMPT_MS, remainingMs))) }),
+    {
+      attempts: 3,
+      baseDelayMs: 250,
+      factor: 4,
+      maxDelayMs: 2_000,
+      deadlineMs: REQUEST_DEADLINE_MS,
+      shouldRetry: (response, error) => error !== undefined || (response?.status ?? 0) >= 500,
+      onRetry: ({ delayMs }) => console.warn(`[imagekit] retrying in ${delayMs}ms`),
+    }
+  );
+}
+
 export async function deleteImageKitFile(path: string): Promise<DeleteOutcome> {
   const key = privateKey();
   if (!key) return "unconfigured";
@@ -151,7 +187,7 @@ export async function deleteImageKitFile(path: string): Promise<DeleteOutcome> {
   let found: { fileId?: string; filePath?: string }[];
   try {
     const query = new URLSearchParams({ searchQuery: `name = "${name}"`, limit: "10" });
-    const response = await fetch(`https://api.imagekit.io/v1/files?${query}`, {
+    const response = await imageKitFetch(`https://api.imagekit.io/v1/files?${query}`, {
       headers: { Authorization: authorization, Accept: "application/json" },
     });
     if (!response.ok) {
@@ -174,7 +210,7 @@ export async function deleteImageKitFile(path: string): Promise<DeleteOutcome> {
   }
 
   try {
-    const response = await fetch(`https://api.imagekit.io/v1/files/${encodeURIComponent(file.fileId)}`, {
+    const response = await imageKitFetch(`https://api.imagekit.io/v1/files/${encodeURIComponent(file.fileId)}`, {
       method: "DELETE",
       headers: { Authorization: authorization },
     });

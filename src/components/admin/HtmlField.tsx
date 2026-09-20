@@ -26,6 +26,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import Icon from "@/components/ui/Icon";
 import { tokenizeHtml, type HtmlTokenKind } from "@/lib/html-highlight";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 
 /**
  * The most the field will grow to before it scrolls instead, in lines of its own
@@ -70,6 +71,13 @@ export default function HtmlField({
   const highlightRef = useRef<HTMLPreElement>(null);
 
   const tokens = useMemo(() => tokenizeHtml(value), [value]);
+
+  // Preview shows what a reader would get, not what was typed: the save filters
+  // the markup (see `lib/sanitize-html.ts`), so an editor who pastes a
+  // `<style>` block sees it disappear here rather than wondering later why the
+  // live page looks different from this box. It also means editing a row that
+  // predates the filter cannot execute anything in this browser.
+  const preview = useMemo(() => sanitizeHtml(value), [value]);
 
   /**
    * Offsets the coloured layer by however far the textarea has been scrolled,
@@ -202,14 +210,13 @@ export default function HtmlField({
       </div>
 
       <div className={tab === "preview" ? "" : "hidden"}>
-        {value.trim() ? (
+        {preview.trim() ? (
           <div className="max-h-[40rem] overflow-auto rounded-xl border border-black/15 bg-white px-6 py-4 dark:border-white/15 dark:bg-neutral-950">
-            {/* The same render the public pages do — `set:html` of stored copy.
-                The panel is behind one shared password, and the HTML in here is
-                written by the people using it. */}
+            {/* The same render the public pages do — `set:html` of stored copy,
+                filtered through the same allowlist. */}
             <div
               className="prose prose-sm max-w-none dark:prose-invert"
-              dangerouslySetInnerHTML={{ __html: value }}
+              dangerouslySetInnerHTML={{ __html: preview }}
             />
           </div>
         ) : (

@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless";
+import { readEnv } from "@/lib/env";
 import type {
   ContactRecipient,
   Extra,
@@ -19,9 +20,9 @@ const FALLBACK_SETTINGS: Settings = {
   og_image_url: null,
 };
 
+/** Read through `lib/env.ts`, which is the only module that reads `import.meta.env`. */
 function databaseUrl(): string {
-  const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
-  return process.env.DATABASE_URL || meta.env?.DATABASE_URL || "";
+  return readEnv("DATABASE_URL");
 }
 
 // Plain row results: no array mode, no full-result envelope. Spelling the two

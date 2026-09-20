@@ -3,6 +3,7 @@ import {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
   adminConfigured,
+  adminHashMalformed,
   clearLoginFailures,
   clientIp,
   createSessionToken,
@@ -47,8 +48,18 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   const backToLogin = `/admin/login?next=${encodeURIComponent(next)}`;
 
   if (!adminConfigured()) {
-    console.error("[admin] ADMIN_PASSWORD is not set — refusing every login");
-    return flashTo(backToLogin, "error", "Admin is not configured: set ADMIN_PASSWORD.");
+    console.error("[admin] no admin password hash is set — refusing every login");
+    return flashTo(backToLogin, "error", "Admin is not configured: set ADMIN_PASSWORD_HASH.");
+  }
+
+  // A set-but-unreadable hash is worth one line in the log: from the outside it
+  // is indistinguishable from everyone suddenly forgetting the password.
+  if (adminHashMalformed()) {
+    console.error(
+      "[admin] ADMIN_PASSWORD_HASH is set but does not parse — every login will be refused. " +
+        "Expected pbkdf2-sha256.<iterations>.<salt>.<hash>; a value pasted into .env loses " +
+        "everything after a $ character."
+    );
   }
 
   const ip = clientIp(request, clientAddress);

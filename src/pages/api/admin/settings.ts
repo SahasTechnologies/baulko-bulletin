@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { getSettingsRow, saveSettings } from "@/lib/admin-db";
 import { csrfOk, flashTo, jsonResponse, originAllowed, readLimited, requireAdmin } from "@/lib/admin";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 
 export const prerender = false;
 
@@ -46,11 +47,15 @@ export const POST: APIRoute = async ({ request }) => {
     // the panel can no longer set one but an existing one survives a save of
     // the fields beside it. `saveSettings` writes the whole row, so passing
     // null here would silently clear a footer someone had already written.
+    // Filtered on the way through even though this form does not edit it: the
+    // footer is rendered with `set:html` on every page, and a row written
+    // before the panel had a filter would otherwise stay unfiltered forever.
+    // Saving the settings is what carries an existing footer over.
     const current = await getSettingsRow();
     await saveSettings({
       title: title.value,
       description: description.value,
-      footer_html: current.footer_html,
+      footer_html: sanitizeHtml(current.footer_html),
       og_image_url: ogImage.value || null,
     });
     return flashTo(back, "ok", "Settings saved.");

@@ -71,8 +71,11 @@ off. The page's own boxes around the island are eased throughout.
 ```bash
 npm install
 npm run dev        # http://localhost:4321
-npm run check      # Astro diagnostics, generated assets, logo checks, and all unit tests
-npm test           # run every test in src/lib/*.test.ts (currently 115 tests)
+npm run check      # Astro diagnostics, generated assets, logo and secret checks, and all unit tests
+npm test           # run every test in src/lib/*.test.ts (currently 166 tests)
+npm run password:hash  # print an ADMIN_PASSWORD_HASH value for a password you type
+npm run secrets:check  # fail if anything in the tree looks like a live credential
+npm run audit      # known vulnerabilities in the dependencies that ship
 npm run icons      # regenerate icons and theme-morph geometry after adding an icon
 npm run logo:dark  # regenerate public/bulletin-dark.png after replacing the logo
 npm run logo:light # paint public/bulletin.png's own cut-out (after replacing it)
@@ -85,8 +88,9 @@ npm run preview    # serve the built output
 content. Without a database URL the public site still builds and serves —
 `src/lib/db.ts` swallows query errors and falls back to empty content rather than
 500ing — but every listing will be empty and the admin panel will not be usable.
-The admin additionally needs `ADMIN_PASSWORD`; uploads need both ImageKit keys;
-email and CAPTCHA are optional integrations described below.
+The admin additionally needs an `ADMIN_PASSWORD_HASH` (see [the admin
+password](#the-admin-password)); uploads need both ImageKit keys; email and
+CAPTCHA are optional integrations described below.
 
 The default development server listens on `http://localhost:4321` and binds to
 all interfaces because `astro.config.mjs` sets `server.host: true`. Do not expose
@@ -228,7 +232,8 @@ gallery.
 
 ## Admin panel
 
-Sign in at **`/admin/login`** with `ADMIN_PASSWORD`.
+Sign in at **`/admin/login`** with the password `ADMIN_PASSWORD_HASH` was made
+from.
 
 | Section | What it edits |
 | --- | --- |
@@ -292,6 +297,32 @@ anything it does not recognise is left as plain text rather than swallowing the
 rest of the field. Adding a picture to the text still works — the uploader
 inserts a `<figure>` at the cursor, into the same textarea.
 
+#### What is allowed to be stored
+
+Stored HTML is filtered through an allowlist in `src/lib/sanitize-html.ts`, both
+when it is saved and again when it is rendered. The second pass is there because
+rows written before the filter existed are still in the database, and because a
+future import or script would not go through the panel at all.
+
+The allowlist is the markup an article actually needs: paragraphs, headings,
+lists, tables, blockquotes, `pre`/`code`, links, `img`, `figure`, and a
+restricted slice of inline SVG. `class`, `id`, `title`, `dir`, `lang`, `role` and
+`aria-`/`data-` attributes survive on anything; the rest are per element, so
+`href` and `src` have to pass a scheme check that allows only `http`, `https`,
+`mailto`, `tel` and relative URLs — with the value decoded first, so
+`&#106;avascript:` is rejected the same way `javascript:` is.
+
+Removed entirely, contents and all: `script`, `style`, `iframe`, `object`,
+`embed`, `form` and its controls, `canvas`, `template`, `base`, `link`, `meta`,
+and the SVG elements that can embed or script. `style` **attributes** are
+dropped as well — inline CSS can cover the page or fetch a URL of its choosing —
+which is the one thing that may visibly change older copy. An element that is
+not on the list at all is unwrapped rather than discarded, so its text survives.
+
+A save that had to remove something says so — “unsafe markup removed (script,
+img[onerror])” — rather than quietly re-writing the editor's copy. The Preview
+tab filters the same way, so what it shows is what a reader will get.
+
 ### Puzzles
 
 Eight types ship, and each is typed in with fields rather than in the stored
@@ -326,33 +357,87 @@ production.
 
 ### Security model
 
-- **One shared password**, compared in constant time, exchanged for a signed
-  (HMAC-SHA256) session cookie: `HttpOnly`, `SameSite=Strict`, `Secure` on https.
+- **One shared password**, never stored in the environment in the clear: the
+  only credential the code reads is `ADMIN_PASSWORD_HASH`, a PBKDF2-SHA256 hash,
+  and it is compared against a stretched candidate rather than a string. A
+  correct password is exchanged for a signed (HMAC-SHA256) session cookie:
+  `HttpOnly`, `SameSite=Strict`, `Secure` on https.
 - **Sessions last 12 hours** and are renewed while you work, so an active editor
   is not signed out mid-sentence. The signing key is derived from
-  `ADMIN_PASSWORD` unless `ADMIN_SESSION_SECRET` is set — setting or rotating it
-  invalidates every existing session immediately.
-- **Fail closed.** With no `ADMIN_PASSWORD`, the login endpoint rejects every
-  attempt (and says so); an unset variable can never mean “empty password is
-  fine”. A password shorter than 12 characters is accepted but flagged.
+  `ADMIN_SESSION_SECRET` when it is set, and from the password hash otherwise —
+  setting or rotating either invalidates every existing session immediately.
+- **Fail closed.** With no `ADMIN_PASSWORD_HASH`, the login endpoint rejects
+  every attempt (and says so); an unset variable can never mean “empty password
+  is fine”. A hash that is set but malformed still counts as configured and
+  refuses every password, rather than falling back to something weaker. A
+  password shorter than 12 characters is accepted but flagged by the generator.
 - **Three layers on every write:** the middleware gates `/admin` and
   `/api/admin`, the route itself re-checks the session, and the form must carry a
   CSRF token derived from that session. Cross-origin POSTs are rejected by an
   Origin check.
-- **No caching, no indexing, no framing** for any admin response (`no-store`,
-  `X-Robots-Tag: noindex`, `X-Frame-Options: DENY`, `frame-ancestors 'none'`),
-  and `/admin` is disallowed in `robots.txt`.
+- **Stored HTML is filtered**, on the way in and on the way out — see
+  [HTML fields](#html-fields).
+- **A policy on every response**, public pages included: no caching, no indexing
+  and no framing for admin responses (`no-store`, `X-Robots-Tag: noindex`,
+  `X-Frame-Options: DENY`, `frame-ancestors 'none'`), plus
+  `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`,
+  `Permissions-Policy`, `Cross-Origin-Opener-Policy`,
+  `Cross-Origin-Resource-Policy` and — over https only —
+  `Strict-Transport-Security` and `upgrade-insecure-requests`. `/admin` is
+  disallowed in `robots.txt`.
 - **Login throttling:** 8 failures per IP per 10 minutes, with a 400 ms delay on
   every failure. The counter is in memory, so on serverless it is per instance
   rather than global.
-- **Revoking access:** change `ADMIN_PASSWORD`, or set/rotate
+- **Revoking access:** change the password (or its hash), or set/rotate
   `ADMIN_SESSION_SECRET`.
+
+### Response headers and the content policy
+
+Every response — public pages, admin pages, API routes, 404s — carries the
+headers built in `src/lib/security-headers.ts`, applied once in
+`src/middleware.ts`:
+
+- `Content-Security-Policy`, described below.
+- `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and
+  `frame-ancestors 'none'` — nothing here may be framed, which is the
+  clickjacking guard the public site previously went without.
+- `Referrer-Policy: strict-origin-when-cross-origin` — other origins learn where
+  a visit came from, not which page sent it.
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(),
+  usb=()` — the site asks the browser for none of these, and says so.
+- `Cross-Origin-Opener-Policy: same-origin` and
+  `Cross-Origin-Resource-Policy: same-origin`.
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains` and
+  `upgrade-insecure-requests`, over https only. Both are promises about https,
+  so on a plain http dev server they would pin `localhost` in that browser and
+  rewrite every request to a port nothing is listening on.
+
+The policy itself is strict about the things that execute and loose about the
+things that only display. Scripts come from this origin and Turnstile; forms may
+only post back here; `object-src` is `none`; nothing can be framed. Images and
+media may point anywhere over https, because an editor can paste a picture URL
+into a cover or an article body and a strict origin list would silently break
+those pieces — and an image cannot run code.
+
+Its known weakness is `'unsafe-inline'` in `script-src`, which the theme script
+in `BaseLayout.astro` needs: without it, dark-mode readers would get a white
+flash on every navigation. So the policy is not a defence against an *injected
+inline* script — that is the sanitizer's job — it is a defence against the rest:
+an injected `<script src="https://…">`, a form posting a password elsewhere, a
+`<base>` tag rewriting every relative URL on the page, a plugin embed. Replacing
+it with hashes or nonces would tighten this; Astro has its own CSP support for
+exactly that, and it is worth doing if the inline script can be moved.
+
+During `astro dev` the policy gains two directives the development server needs
+(`ws:` for Vite's HMR channel and `'unsafe-eval'` for its tooling) and loses
+`upgrade-insecure-requests`. Nothing else changes, so a page is developed against
+the policy it ships with — which is the point of applying it in dev at all.
 
 ## Environment
 
 ```
 DATABASE_URL="postgres://…"     # required — Neon connection string
-ADMIN_PASSWORD="…"              # required — the panel is off while this is unset
+ADMIN_PASSWORD_HASH="…"         # the admin panel is off while this is unset — pbkdf2-sha256.…
 ADMIN_SESSION_SECRET="…"        # optional — set it to revoke all sessions by rotation
 IMAGEKIT_PUBLIC_KEY="…"         # required for uploads from the panel
 IMAGEKIT_PRIVATE_KEY="…"        # signs each upload; never leaves the server
@@ -369,6 +454,17 @@ Add them to the Vercel project's environment variables as well as your local
 `.env`. Locally, `.env.local` is loaded on top of `.env`, which is the safe place
 to override a value you would rather not edit in place.
 
+Server-side code reads these through `src/lib/env.ts` and never through
+`import.meta.env` directly. There are four runtimes to satisfy, and this is the
+short version of the long comment in that file: `process.env` is checked first
+because it holds the deployed values, `.env` is the fallback for `astro dev`,
+the fallback has to name each property one at a time because Vite's dev server
+throws on `import.meta.env[name]` (a dictionary read works in a production build
+and 500s every page in development — the wrong way round for a difference to
+surface), and under plain Node — the tests, the scripts — there is no
+`import.meta.env` at all. Adding a variable means adding it to that file's list;
+the type makes that unavoidable.
+
 Turnstile has two deliberate modes. If `TURNSTILE_SECRET` is unset, the contact
 API accepts submissions without CAPTCHA verification and the form does not load
 the Turnstile widget. If `TURNSTILE_SECRET` is set, provide
@@ -377,9 +473,54 @@ the widget then renders and every submission must carry a valid token. A
 hostname allowlist can be supplied with `TURNSTILE_HOSTNAMES`. Configure the
 secret and site key together in production.
 
-`ADMIN_PASSWORD` must never be renamed to `PUBLIC_ADMIN_PASSWORD`: `PUBLIC_*`
-values are inlined into the client bundle. The same goes for the ImageKit keys —
-the *public* key is meant to be seen, the private key is not.
+### The admin password
+
+There is no password variable to set. `ADMIN_PASSWORD_HASH` holds a hash of it,
+and that hash is the only credential the code reads — a deployment with no hash
+has no admin panel, rather than a panel with a password sitting in an
+environment variable where everyone with dashboard access, every screenshot and
+every support export can read it.
+
+```bash
+npm run password:hash
+```
+
+It masks what you type, in Windows cmd as much as anywhere else — and it is the
+same command there, which is the one to prefer: `cmd` has no `read -s`, and a
+command that carries the password itself leaves it in the console's history.
+
+Type the password, press Enter, and paste what it prints into
+`ADMIN_PASSWORD_HASH` in `.env` and in the Vercel project's environment
+variables. For a script, or a shell where you would rather not answer a prompt,
+it also reads a piped line:
+
+```bash
+read -s -p "Password: " PW && printf '%s' "$PW" | npm run password:hash
+echo a-long-passphrase| npm run password:hash       # cmd, or anywhere
+```
+
+The password is never an argument and never echoed, so it reaches neither the
+shell's history nor a process listing. What the script prints is
+PBKDF2-SHA256 at 600 000 iterations with a random salt, encoded as
+`pbkdf2-sha256.<iterations>.<salt>.<hash>`; it warns, but does not refuse, below
+12 characters. The signing key falls back to the hash, so rotating it signs every
+session out.
+
+The fields are separated by full stops rather than the `$` PBKDF2 usually uses,
+and that is deliberate: Vite reads `.env` files with dotenv, which expands `$name`
+inside every value, so a `$`-separated hash pasted into `.env` arrives as
+`pbkdf2-sha256$600000` — silently, with the salt and the digest gone, and the
+panel refusing every password from then on. Shells mangle it the same way. A
+value in this format can be pasted into a `.env` file, a shell, or a dashboard
+unchanged. If the panel ever says the hash could not be read, that is the
+symptom to look for: regenerate it and paste the whole line, quoting it if the
+tool you are pasting into is fond of expansion.
+
+`ADMIN_PASSWORD` is gone from the code, not merely deprecated: nothing reads it,
+and setting it configures nothing. If you find one in an environment, delete it.
+It must never be renamed to `PUBLIC_ADMIN_PASSWORD` either: `PUBLIC_*` values are
+inlined into the client bundle. The same goes for the ImageKit keys — the
+*public* key is meant to be seen, the private key is not.
 
 The ImageKit key needs **upload and media-management** permission: the panel
 deletes a replaced cover or PDF itself, through `/v1/files` (see [Replaced files
@@ -391,15 +532,36 @@ old file stays in the bucket. Worth checking if files start accumulating.
 ## Checks, CI and deploys
 
 `npm run check` runs `astro check`, verifies generated icons and theme-morph
-geometry, checks both logos, and runs every test in `src/lib/*.test.ts`.
-`vercel.json` runs `npm run check` before the production build, so a type error,
-stale generated asset, stale logo, or regression in a tested utility fails the
-deployment rather than reaching the live site.
+geometry, checks both logos, scans the tree for credentials, and runs every test
+in `src/lib/*.test.ts`. `vercel.json` runs `npm run check` before the production
+build, so a type error, stale generated asset, stale logo, committed secret, or
+regression in a tested utility fails the deployment rather than reaching the
+live site.
 
-The current suite contains 115 deterministic Node tests:
+The credential scan (`scripts/check-secrets.mjs`) reads the files git would
+commit — tracked, plus untracked and not ignored — and looks for the shapes this
+project's services hand out: a private key block, a Resend key, an ImageKit
+private key, a Turnstile secret, a connection string with a password, and any of
+this project's own secret variables assigned a long literal value. It never
+reads your `.env`, because that is where a live key belongs; git excludes it and
+the scan follows git. A committed `.env` is a finding in itself. GitHub's own
+secret scanning is a repository setting that cannot be reviewed or run before a
+push — this is the part that travels with the code.
 
-- `auth.test.ts` — password verification, signed sessions, expiry, renewal,
-  CSRF, cookies, secure-request detection, client IP selection, and login limits.
+The CI workflow additionally runs `npm run audit` (`npm audit --omit=dev
+--audit-level=high`). It is reported rather than fatal: a new advisory against a
+ transitive dependency would otherwise fail every open pull request at once,
+which teaches people to ignore the job. Make it a gate by removing
+`continue-on-error` from that step when someone can act on it immediately.
+
+The current suite contains 163 deterministic Node tests:
+
+- `auth.test.ts` — password verification against both the plaintext and the
+  encoded hash, malformed hashes, hash generation, signed sessions, expiry,
+  renewal, CSRF, cookies, secure-request detection, client IP selection, and
+  login limits.
+- `env.test.ts` — `process.env` precedence, an unset variable returning empty
+  rather than throwing, trimming, and the development check being positive-only.
 - `html-highlight.test.ts` — plain text, tags, attributes, values, comments,
   declarations, self-closing tags, and half-written HTML.
 - `images.test.ts` — missing images, ImageKit and Sanity transforms, existing
@@ -413,8 +575,18 @@ The current suite contains 115 deterministic Node tests:
   scheduling boundaries, storage round trips, and due checks.
 - `puzzle-data.test.ts` — all eight puzzle formats, valid data, malformed data,
   error locations, duplicate constraints, and hostile inputs that must not throw.
+- `retry.test.ts` — first-try success, backoff sequence, exhausted attempts,
+  non-retryable outcomes, thrown errors, the deadline, the delay cap, and the
+  budget handed to each try.
+- `sanitize-html.test.ts` — the allowlist, discarded elements and their contents,
+  event handlers and inline styles, every URL scheme in every spelling,
+  `srcset`, comments and declarations, unbalanced and unfinished markup, quotes
+  inside attribute values, and inline SVG.
 - `search.test.ts` — literal and fuzzy matching, multi-term queries, ranking,
   stable ties, empty queries, and input immutability.
+- `security-headers.test.ts` — the directives that navigate or execute, every
+  host the site loads, the admin-only and dev-only additions, HSTS over https
+  only, and that an existing header is never overwritten.
 - `theme-morph.test.ts` — exact animation endpoints, monotonic progress, ray
   removal, shape bounds, scale/rotation, and ray transforms.
 
@@ -458,16 +630,23 @@ before writes. Admin responses are not cached, indexed, or framed.
 Contact submissions are inserted before email delivery. If Resend is missing,
 misconfigured, or unavailable, the message remains in `contact_submissions` and
 can be read in `/admin/messages`; the sender is not told that email delivery
-failed. Location lookup through ip-api is also best-effort and never prevents a
-message from being stored. When CAPTCHA is enabled, failed verification prevents
-storage.
+failed. A send that looks temporary — a 429, a 5xx, a connection that never
+answered — is tried up to three times within a nine-second budget
+(`src/lib/retry.ts`), each attempt carrying the same `Idempotency-Key` so a
+retry cannot deliver the message twice. Anything the API states as a fact (a
+422, an unverified domain) is not retried at all. Location lookup through ip-api
+is also best-effort and never prevents a message from being stored. When CAPTCHA
+is enabled, failed verification prevents storage.
 
 Uploads go directly from the browser to ImageKit. The app only signs an upload
 and later stores the returned URL. Replacing a cover, puzzle image, or PDF runs a
 best-effort reference check and cleanup after the row is saved. A file that is
-still referenced is kept. A newly uploaded file may not yet be searchable in
-ImageKit, so cleanup can report it as missing and leave an orphan for later
-manual cleanup.
+still referenced is kept. The lookup and the delete are each retried on a
+connection that never answered or a 5xx, within six seconds and three attempts;
+a 401 or a 404 is taken as the answer it is. A newly uploaded file may not yet
+be searchable in ImageKit (its search index lags by roughly eleven seconds), so
+cleanup can report it as missing and leave an orphan for later manual cleanup —
+waiting for the index would hold a save open far longer than the retry is worth.
 
 The PDF reader chooses pdf.js's modern or legacy build based on browser support,
 loads workers and wasm from `/public/pdfjs/<version>`, downloads smaller issues
@@ -497,8 +676,15 @@ and fullscreen where the browser exposes it.
 - `src/lib/admin-db.ts` — admin database reads/writes and media-reference checks.
 - `src/lib/admin.ts` — form validation, CSRF/origin helpers, redirects, and slug
   handling.
-- `src/lib/auth.ts` — password verification, signed sessions, cookies, CSRF,
-  and login throttling.
+- `src/lib/auth.ts` — password verification (plaintext or PBKDF2 hash), signed
+  sessions, cookies, CSRF, and login throttling.
+- `src/lib/env.ts` — the only module that reads `import.meta.env`, and the
+  explanation of why that is a module at all.
+- `src/lib/sanitize-html.ts` — the allowlist that filters stored HTML, at write
+  time and at render time.
+- `src/lib/security-headers.ts` — the baseline headers and the content policy.
+- `src/lib/retry.ts` — bounded retries with backoff and a deadline, for the
+  calls that leave the process.
 - `src/lib/puzzle-data.ts` — the shared parser and validator for every puzzle.
 - `src/lib/publish-time.ts` — Sydney date/time conversion and scheduling logic.
 - `src/lib/search.ts` — browser-side fuzzy search for public listings.
@@ -512,7 +698,8 @@ and fullscreen where the browser exposes it.
   layout easing.
 - `src/lib/path-geometry.ts`, `theme-morph.ts`, and generated files — theme icon
   geometry and animation.
-- `scripts/` — generated pdf.js assets, icons, and morph geometry.
+- `scripts/` — generated pdf.js assets, icons, morph geometry, the credential
+  scan, and the password-hash generator.
 - `tools/` — logo generation and optional cover maintenance scripts.
 - `.github/workflows/checks.yml` — CI checks on pushes and pull requests.
 
@@ -556,8 +743,8 @@ reviewed dry run.
 
 The admin uses one shared password and a signed, stateless cookie. This is
 appropriate for one operator but does not provide per-user permissions, audit
-history, or individual session revocation. Changing `ADMIN_PASSWORD` or rotating
-`ADMIN_SESSION_SECRET` invalidates existing sessions.
+history, or individual session revocation. Replacing the password hash or
+rotating `ADMIN_SESSION_SECRET` invalidates existing sessions.
 
 The login and contact throttles are in-memory. On Vercel they are per function
 instance, not globally shared, so they reduce casual abuse but are not a complete
@@ -566,10 +753,15 @@ best-effort city/country label and the resulting location is stored with the
 message. Review privacy and retention requirements before enabling this in a
 school environment.
 
-Stored article, page, and footer HTML is rendered intentionally as HTML. The
-current editor is trusted-admin content, not a sanitizer. If more than one
-operator will use the panel, add an allowlist sanitizer and review existing HTML
-before exposing the panel to additional users.
+Stored article, page, and footer HTML is filtered through the allowlist in
+`src/lib/sanitize-html.ts` on the way in and on the way out, so a `<script>` or
+an `onerror` cannot reach a reader even if an older row still contains one. What
+that does **not** cover: an admin who is signed in can still read and write every
+row, the session cookie is a single shared secret with no per-user identity, and
+there is no audit trail. The remaining items worth doing before more than one
+operator uses the panel are a shared rate limiter, per-user accounts, and a
+one-off pass over existing rows — none of which can be done without a database
+to test against.
 
 ## Known test and coverage boundaries
 
@@ -577,12 +769,21 @@ The deterministic unit suite protects utility behavior, but it is not a claim
 that the full site has been browser-tested. The next testing layers should be:
 
 1. Service-adapter tests with mocked Neon, ImageKit, Resend, Turnstile, ip-api,
-   and upload/download failures.
+   and upload/download failures. The retry loop's *policy* is tested
+   (`retry.test.ts`); what a real 500 from Resend does to it is not.
 2. HTTP integration tests using a disposable database for login, middleware,
    CRUD, scheduling visibility, contact storage, and response headers.
 3. Browser tests for navigation, hydration, search, theme persistence, puzzles,
    PDF controls, uploads/cropping, keyboard input, responsive layouts, and
-   accessibility.
+   accessibility — including the content policy, which is only asserted as a
+   string today, not against a browser's report of what it blocked.
+
+Nothing in the suite needs a database, which is deliberate: it is the reason the
+checks can run on any machine and in CI with no credentials. The cost is that
+the queries themselves are untested. Bringing the database into the loop needs a
+second Neon branch (or a template database) with fixtures and cleanup, pointed
+at by `DATABASE_URL` only for those tests — a separate database, not the
+development one.
 
 Do not point tests at production credentials or a production database. Environment
 variables provide configuration; they do not provide isolation, fixtures, or
@@ -657,6 +858,11 @@ finished changing, and to the whole move staying inside the icon's box.
 
 ## Tools
 
+- `scripts/check-secrets.mjs` — the credential scan `npm run check` runs.
+- `scripts/hash-password.mjs` — prints the `ADMIN_PASSWORD_HASH` value for the
+  password you type at its prompt (`npm run password:hash`), or for one piped
+  into it, using the same code that verifies it so the two cannot disagree about
+  the format.
 - `scripts/sync-pdfjs-assets.mjs` — copies pdf.js's assets into `public/pdfjs`
   (runs on `npm install` and before the build).
 - `scripts/sync-icons.mjs` — the icon generator above.

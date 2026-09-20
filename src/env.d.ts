@@ -3,9 +3,9 @@
 
 interface ImportMetaEnv {
   readonly DATABASE_URL?: string;
-  /** Password for /admin. Server-side only — never expose as PUBLIC_*. */
-  readonly ADMIN_PASSWORD?: string;
-  /** Optional HMAC key for admin sessions; defaults to a key derived from the password. */
+  /** PBKDF2 hash of the /admin password — `npm run password:hash` prints one. Server-side only. */
+  readonly ADMIN_PASSWORD_HASH?: string;
+  /** Optional HMAC key for admin sessions; defaults to a key derived from the password hash. */
   readonly ADMIN_SESSION_SECRET?: string;
   /** ImageKit keys used to sign browser uploads from the admin panel. */
   readonly IMAGEKIT_PUBLIC_KEY?: string;
@@ -30,7 +30,7 @@ declare namespace App {
     adminSession: import("@/lib/auth").AdminSession | null;
     /** CSRF token matching `adminSession`, for embedding in admin forms. */
     adminCsrf: string;
-    /** False when ADMIN_PASSWORD is unset, so the login page can explain the fix. */
+    /** False when ADMIN_PASSWORD_HASH is unset, so the login page can explain the fix. */
     adminConfigured: boolean;
   }
 }

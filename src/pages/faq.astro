@@ -2,9 +2,13 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import PageHeader from "@/components/PageHeader.astro";
 import { getSettings, getPage } from "@/lib/db";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 
 const settings = await getSettings();
 const page = await getPage("faq");
+
+// See the note in about.astro: filtered on the way out as well as on the way in.
+const body = sanitizeHtml(page.body_html);
 ---
 
 <BaseLayout title={page.title} settings={settings} ogImage={page.og_image_url}>
@@ -14,7 +18,7 @@ const page = await getPage("faq");
       <h1 class="mb-12 text-6xl font-bold leading-tight tracking-tighter md:text-7xl">
         {page.title}
       </h1>
-      <div class="prose prose-lg dark:prose-invert" set:html={page.body_html} />
+      <div class="prose prose-lg dark:prose-invert" set:html={body} />
     </article>
   </div>
 </BaseLayout>
