@@ -3,12 +3,12 @@
  *
  * Every page here is laid out one way on a laptop and another way everywhere
  * else, and each of those switches takes effect the instant its width crosses
- * the line: the nav's labels tuck in behind its icons, a header's brand moves
- * from above its nav to beside it, a grid of cards gives up a column, a footer's
- * two columns become one — and everything below any of those moves up or down by
- * whatever room the change gave back. Arrived at by dragging a window along the
- * edge, that reads as the site being replaced rather than resized: every element
- * somewhere else, in one frame.
+ * the line: the nav's cells re-wrap onto a different number of lines, a header's
+ * brand moves from above its nav to beside it, a grid of cards gives up a
+ * column, a footer's two columns become one — and everything below any of those
+ * moves up or down by whatever room the change gave back. Arrived at by dragging
+ * a window along the edge, that reads as the site being replaced rather than
+ * resized: every element somewhere else, in one frame.
  *
  * So each crossing runs the standard FLIP trick over the whole page: read where
  * every element was, let the new shape apply, offset each one back to where it
@@ -24,16 +24,12 @@
  *   - a row changing shape while the page is still: the children of a box that
  *     arranges them itself — a flex row, a grid — gathered into lines by which
  *     of their boxes overlap vertically. Three lines down to two, or stacked to
- *     side by side, is a shape change whatever caused it;
- *   - the nav's own fit test, which decides at a width no media query knows
- *     about, and reports its answer as a token (see src/lib/nav-fit.ts).
+ *     side by side, is a shape change whatever caused it.
  *
  * A page that does not want something moved can say so: `data-flip="off"`, and
  * an island that has not hydrated yet is left alone until it has, so that no
  * inline style lands on markup React has not taken over.
  */
-
-import { navShape, updateNavFit } from "./nav-fit";
 
 /** An element's move, as the offset it has to be held back by, in px. */
 interface Offset {
@@ -97,14 +93,6 @@ const OFF = '[data-flip="off"]';
 const PENDING = "astro-island[ssr]";
 
 /**
- * A nav's row of cells. Their shape is decided by the fit test rather than read
- * off their lines — a label opening changes the row's width, not its lines — and
- * which of them is on which line is that file's business too, so they are left
- * out of the rows gathered here.
- */
-const NAV = ".icon-nav";
-
-/**
  * The widths a page can change shape at, as written in the page's own CSS:
  * `(min-width: 48rem)`, `(max-width: 48rem)`, and the `(width >= 48rem)` form
  * newer Tailwind emits. Matching both spellings matters, or a stylesheet that
@@ -153,8 +141,6 @@ let placements = new Map<number, Offset>();
 let run = 0;
 /** Whether the last crossing is still easing. */
 let inFlight = false;
-/** The nav's shape as of the last frame, to detect a change of it. */
-let shape = "";
 
 /**
  * Whether an element is a box the flip can move.
@@ -311,9 +297,6 @@ function read(): void {
   const kids: number[][] = boxes.map(() => []);
   boxes.forEach((box, at) => {
     for (let up = box.parentElement; up; up = up.parentElement) {
-      // A nav's cells are the fit test's business: which line they are on is
-      // decided by it, and reported as a shape token rather than read off here.
-      if (up.matches(NAV)) return;
       const parent = index.get(up);
       if (parent === undefined) continue;
       kids[parent].push(at);
@@ -385,13 +368,7 @@ export function initLayoutTransition(): void {
 
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // The fit test decides the nav's shape, and it has to have run before the first
-  // reading — the page arrives in whatever shape the room allows, with nothing to
-  // ease from.
-  updateNavFit();
-
   read();
-  shape = navShape();
 
   const swap = () => {
     const spare = was;
@@ -400,18 +377,11 @@ export function initLayoutTransition(): void {
   };
 
   const step = () => {
-    // Fitting first, so this frame reads one shape of the nav rather than one
-    // that is about to be changed underneath it.
-    updateNavFit();
-
     let crossed = false;
     lists.forEach((list, at) => {
       if (list.matches !== sides[at]) crossed = true;
     });
     if (crossed) lists.forEach((list, at) => (sides[at] = list.matches));
-
-    const refitted = navShape() !== shape;
-    shape = navShape();
 
     // With the new layout, and with whatever offset a flip still running is
     // carrying: read here rather than at the previous frame's end, so that a
@@ -424,7 +394,7 @@ export function initLayoutTransition(): void {
     // the reading that flip takes when it settles.
     const relaid = inFlight ? false : readLines(is);
 
-    if (!crossed && !refitted && !relaid) {
+    if (!crossed && !relaid) {
       swap();
       return;
     }
@@ -543,10 +513,10 @@ export function initLayoutTransition(): void {
 
   window.addEventListener("resize", onResize);
 
-  // The nav's labels are set in a webfont, so how wide the open row is is not
-  // final until it has loaded — and on a slow connection that lands after the
-  // first fit test has already run. The same goes for the page's images, which
-  // move everything below them when they arrive.
+  // The page's own webfont and its images both land after the first reading, and
+  // both move what is below them when they do: the nav's labels are set in the
+  // webfont, so the row they wrap into is not its final shape until it has
+  // loaded. Either arrival is a layout change worth a reading.
   document.fonts?.ready.then(step).catch(() => {});
   window.addEventListener("load", step);
 

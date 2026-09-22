@@ -45,7 +45,12 @@ const puzzles = await getPuzzlesForPost(post.id);
       </div>
 
       {post.pdf_url ? (
-        <PdfViewer client:load src={post.pdf_url} title={post.title} />
+        <PdfViewer
+          client:load
+          src={post.pdf_url}
+          title={post.title}
+          cover={post.cover_image_url}
+        />
       ) : (
         <div class="prose prose-lg dark:prose-invert max-w-2xl mx-auto" set:html={content} />
       )}
