@@ -25,8 +25,8 @@ import {
   serializeCookie,
 } from "@/lib/auth";
 import { jsonResponse, redirectTo } from "@/lib/admin";
-import { isDevelopment } from "@/lib/env";
-import { applySecurityHeaders } from "@/lib/security-headers";
+import { isDevelopment, readEnvTrimmed } from "@/lib/env";
+import { applySecurityHeaders, readerOrigin } from "@/lib/security-headers";
 
 const LOGIN_PATH = "/admin/login";
 const LOGIN_API = "/api/admin/login";
@@ -62,7 +62,16 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const secure = isSecureRequest(context.request);
   // Vite's dev server needs a websocket and `eval`; a deployed function must
   // not have either. See `lib/security-headers.ts`.
-  const options = { secure, dev: isDevelopment() };
+  //
+  // The reader's origin is named from the configured endpoint rather than
+  // assumed: the issue reader downloads every PDF with `fetch`, so a policy that
+  // does not allow ImageKit's CDN leaves the reader unable to open a file the
+  // browser can reach perfectly well by hand.
+  const options = {
+    secure,
+    dev: isDevelopment(),
+    reader: readerOrigin(readEnvTrimmed("IMAGEKIT_URL_ENDPOINT")),
+  };
 
   context.locals.adminSession = null;
   context.locals.adminCsrf = "";

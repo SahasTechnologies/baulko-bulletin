@@ -11,12 +11,17 @@ const brand = Astro.props.brand || "Baulko Bulletin";
 
 {/* The brand and the nav are stacked here and set side by side on a laptop. The
     move between the two is eased rather than swapped, like every other
-    re-arrangement on the page — see src/lib/layout-flip.ts. */}
-<div class="mb-8 mt-10 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+    re-arrangement on the page — see src/lib/layout-flip.ts.
+
+    `items-center` is on at every size, not just on a laptop. Stacked, the nav is
+    a block of centred lines; a brand that stayed against the left edge while the
+    nav under it was centred read as two unrelated things that happened to share
+    a box. Centred, the pair reads as one column. */}
+<div class="mb-8 mt-10 flex flex-col items-center gap-5 lg:flex-row lg:items-center lg:justify-between">
   {/* Nothing about the brand may depend on the nav's width: a brand that can
       shrink wraps its own name when the nav needs the room, and hands the nav
-      more room in exchange — which would let the two swap places back and
-      forth as the fit test re-measures. */}
+      more room in exchange — which would let the two trade places back and
+      forth as the nav re-wrapped. */}
   <a
     href="/"
     class="flex shrink-0 gap-2 sm:gap-3 items-center hover:underline text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:tracking-tighter"
@@ -24,5 +29,5 @@ const brand = Astro.props.brand || "Baulko Bulletin";
     <Logo />
     {brand}
   </a>
-  <NavLinks />
+  <NavLinks class="icon-nav-header" />
 </div>

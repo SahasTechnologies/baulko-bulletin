@@ -154,27 +154,21 @@ button:not(:disabled):active {
   stroke-width: var(--ionicon-stroke-width, 32px);
 }
 
-/* Icon-only nav rows — used by the public NavLinks and the admin panel's
-   section nav.
+/* Icon nav rows — used by the public NavLinks and the admin panel's section
+   nav.
 
-   Layout: two shapes, one set of cells.
+   One shape everywhere: every link shows its icon beside its name, and the row
+   wraps onto the next line when it runs out of room. Nothing is hidden behind
+   anything, so the nav looks the same on a laptop as it does on a phone, and a
+   link's name never has to be hovered into view — which is the only honest
+   shape on a touch screen, where there is no hover to bring a label back with.
 
-   On a device that can hover, at a laptop's width, the row is a single line of
-   icon-sized cells with each label collapsed behind its icon; hovering,
-   focusing, or being the current page slides the label out. Nothing is
-   reserved up front, so the icons stay packed together and the row is barely
-   wider than the icons themselves, and `flex-wrap: nowrap` means the row can
-   never break onto a second line — the longest label opening can only move
-   icons sideways, never re-flow the nav.
-
-   Everywhere else the labels are simply shown, in full. A phone has no hover
-   and a narrow window has no room to spare, so collapsing a label there would
-   hide a link's name from a reader with no way to summon it back; the row
-   wraps instead, and every link keeps its icon beside its name.
-
-   Hover/focus slides the label in from the left; the link for the page you
-   are on keeps its label out permanently (aria-current="page"). Pure CSS, so
-   it works before hydration and without JS. */
+   Hovering a cell grows its icon and pressing one shrinks it again, both on the
+   site's own springy easing — the same motion the theme toggle beside them
+   makes. The scale is on the icon rather than the cell so the row's geometry
+   never changes: a cell that grew would shove its neighbours sideways on every
+   hover, and a nav that twitches under the pointer is worse than one that holds
+   still. Pure CSS, so it works before hydration and without JS. */
 .icon-nav {
   display: flex;
   flex-wrap: wrap;
@@ -186,20 +180,12 @@ button:not(:disabled):active {
   gap: 0.4rem 1.25rem;
 }
 
-/* Cells are content-sized and never shrink: an item is exactly its icon (plus
-   its label while that is open), so the nav's footprint stays as small as the
-   icons allow. */
+/* Cells are content-sized and never shrink: an item is exactly its icon and its
+   label, so a label too long for the line moves the whole cell to the next one
+   rather than being clipped or broken in half. */
 .icon-nav-item {
   display: flex;
   flex: none;
-}
-
-/* The nav's cells come in two groups so a laptop can put the second group on a
-   second line. Everywhere else the wrappers are not there at all: the cells
-   flow in one run, exactly as if they were written flat, which is the wrapping
-   row a phone and a tablet use. `nav-two-rows` gives the wrappers a box. */
-.icon-nav-line {
-  display: contents;
 }
 
 /* Phones: a touch tighter, so a wrapped row costs fewer lines. */
@@ -210,32 +196,70 @@ button:not(:disabled):active {
   }
 }
 
-/* Tablets — and a laptop window dragged narrow — are wide for their text but
-   still cannot hover the labels open. There is room to spend here, so the row
-   breathes rather than staying phone-tight. */
+/* Tablets — and a laptop window dragged narrow — have room to spend, so the
+   row breathes rather than staying phone-tight. The wrapping is what makes that
+   safe: more room between cells means fewer of them per line, not an overflow. */
 @media (min-width: 30rem) {
   .icon-nav {
     gap: 0.7rem 1.75rem;
   }
 }
 
-/* A label opening makes the row wider, so a nav sized by its own content will
-   hand that extra width on to whatever contains it. Where that container also
-   holds text — the home page hero, whose column sits beside the title — the
-   text re-wraps as you hover. The fix belongs at the container: a column with a
-   width of its own cannot be resized by what is inside it. The page headers are
-   already safe, since there the nav is only pushed against a gap. */
+/* The row is sized by its own content, so whatever contains it has to have a
+   width of its own where that matters — the home page hero puts the nav in a
+   column beside the title, and a column that let the nav decide its width would
+   re-wrap the description underneath it as the two traded room. */
+
+/* A subpage header is the other case. There the nav shares a line with the
+   brand, and the row's `justify-between` holds it against the right edge — the
+   way the old row of bare icons sat there, and the way its start stayed a
+   question of what the nav itself needs rather than of how wide the brand
+   happened to be.
+
+   `width: max-content` is what makes that hold: left to itself the nav stretches
+   to fill whatever the brand leaves and then centres each of its wrapped lines
+   inside that width, which is what put a second line of one cell in the middle
+   of the page with air on both sides of it. Hugging its content puts the block's
+   right edge where its content ends instead, and the lines pack against that
+   edge, so the whole nav reads as one block at the end of the row.
+
+   The cost of that is the wrapped line: it hangs under the end of the first
+   rather than starting under the first cell, because `justify-content` applies
+   to every line at once. Making the block hug its *longest line* — so the lines
+   line up on the left and the block still ends at the right edge — is not
+   something CSS can do here; it would take a measuring pass, which is the
+   apparatus this nav just shed.
+
+   Without a cap, though, `max-content` on a wide laptop is the whole row of
+   eight links and the switch, running the width of the page beside the brand.
+   That is not the nav this site had before — it is four or so to a line — so the
+   block is held to the measure the home page already gives its own nav column
+   (`lg:w-[29rem] xl:w-[33rem]`, in src/pages/index.astro), which is what wraps
+   it at four. Measured at text-xl: four cells and their gaps come to 468px and a
+   fifth needs 585px, so 33rem (528px) sits in the middle of the range that
+   yields four and is not sensitive to a slightly different font metric. */
+.icon-nav-header {
+  max-width: 33rem;
+}
+
+@media (min-width: 64rem) {
+  .icon-nav-header {
+    justify-content: flex-end;
+    width: max-content;
+  }
+}
 
 .icon-nav-link {
   display: inline-flex;
   align-items: center;
   flex: none;
+  /* A label is a name, not a paragraph: it moves to the next line with its cell
+     rather than breaking across two. */
+  white-space: nowrap;
   border-radius: 4px;
 }
 
-/* The icon sits above the label, so the label appears to emerge from under
-   it; rotating the icon on hover keeps the little flourish the old nav had.
-   An icon is as wide as its own 1em box, so this is what sizes it — a touch
+/* An icon is as wide as its own 1em box, so this is what sizes it — a touch
    larger than the text it sits in, since an icon carries less weight than a
    letterform of the same height. */
 .icon-nav-link .icon {
@@ -243,130 +267,48 @@ button:not(:disabled):active {
   z-index: 1;
   flex: none;
   font-size: 1.25em;
-  transition: transform 300ms ease;
+  /* The same springy overshoot the theme toggle and every button use, so the
+     nav's motion reads as part of the site's rather than as its own. */
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* On the cell rather than the link, so the whole cell — padding included —
-   counts as hovering it. The pointer that has just left one icon is then
-   already inside the next cell, and the label it is heading for opens as it
-   arrives instead of after a dead zone. */
-.icon-nav-item:hover .icon {
-  transform: rotate(12deg);
+/* On the cell rather than the link, so pointing anywhere in the cell — label
+   included — grows the icon it belongs to. The label grows with it: the two are
+   one thing to point at, and a name that stayed its old size beside an icon that
+   had grown reads as two elements that happen to sit together. */
+.icon-nav-item:hover .icon,
+.icon-nav-item:hover .icon-nav-label {
+  transform: scale(1.18);
 }
 
-/* Shown in full by default. Only the hover branch below collapses it. */
+/* Pressed: the icon gives under the pointer and springs back on release. Both
+   selectors are the same weight, so this one wins by coming second. */
+.icon-nav-item:active .icon,
+.icon-nav-item:active .icon-nav-label {
+  transform: scale(0.9);
+}
+
+/* Shown in full, always. The row wraps; nothing is hidden to make it fit.
+
+   Grown by a transform rather than by `font-size`, and that is the point rather
+   than a preference: a transform is painted, not laid out, so the row keeps the
+   geometry it had and the neighbouring cells are not shoved sideways as the
+   pointer crosses it. It grows from its left edge, which is what keeps the gap
+   it holds from its icon the same at every size — growing about its middle would
+   close that gap as it opened, and the name would look like it was sliding under
+   the icon. */
 .icon-nav-label {
   display: inline-block;
   margin-left: 0.4em;
+  transform-origin: left center;
+  /* The same springy overshoot the icon beside it uses, or the two would come
+     apart mid-motion. */
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .icon-nav-link:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 3px;
-}
-
-/* A pointer that can hover, and a window as wide as a laptop's: this is the
-   only case where hiding a label is safe, because there is always something to
-   bring it back, and the only case where the room is worth reclaiming. 48rem is
-   the width the rest of the site stops using its phone layout at.
-
-   Two shapes are available here, and `src/lib/nav-fit.ts` picks between them by
-   measuring: one line of icons, or — when the label of the page you are on plus
-   the label of any one link you hover would reach past the page's text column —
-   two lines of them. `nav-two-rows` is that second shape. `nav-spelled` is the
-   way out when even two lines cannot hold those labels: the labels are simply
-   shown, wrapped, which is the shape the rows above already use everywhere that
-   cannot hover. Neither class is ever set with JavaScript off, so the icons
-   stay icons. */
-@media (hover: hover) and (pointer: fine) and (min-width: 48rem) {
-  /* The space between the icons belongs to the cells, as padding, rather than
-     sitting between them as a gap. The eye sees the same gap it saw before —
-     two cells' padding meeting — but a pointer sliding along the row is never
-     over nothing: each cell's box reaches the middle of the space, so the label
-     it left cannot close before the next one opens. The row's ends then hang
-     out by that padding, so the first and last icons still sit on the column's
-     edges rather than inset by it. `src/lib/nav-fit.ts` allows for the overhang
-     when it works out what the row has room for. */
-  html:not(.nav-spelled) .icon-nav {
-    column-gap: 0;
-    margin-inline: -0.6em;
-  }
-
-  /* Every cell carries that padding, not just the links — the theme switch is a
-     cell too, and a cell without it would both leave a dead zone beside it and
-     push its icon out past the column's edge. */
-  html:not(.nav-spelled) .icon-nav-item {
-    padding-inline: 0.6em;
-  }
-
-  html:not(.nav-two-rows):not(.nav-spelled) .icon-nav {
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-  }
-
-  /* The link clips its own box, so the label can slide out from behind the
-     icon without ever spilling past its own box. */
-  html:not(.nav-spelled) .icon-nav-link {
-    overflow: hidden;
-    white-space: nowrap;
-  }
-
-  /* Collapsed to zero width; expanded on hover/focus/current page. max-width
-     (rather than width) is what makes the push-the-icons-over effect animate. */
-  html:not(.nav-spelled) .icon-nav-label {
-    max-width: 0;
-    margin-left: 0;
-    opacity: 0;
-    overflow: hidden;
-    transform: translateX(-100%);
-    transition:
-      max-width 350ms ease,
-      margin-left 350ms ease,
-      opacity 250ms ease,
-      transform 350ms ease;
-  }
-
-  html:not(.nav-spelled) .icon-nav-item:hover .icon-nav-label,
-  html:not(.nav-spelled) .icon-nav-link:focus-visible .icon-nav-label,
-  html:not(.nav-spelled) .icon-nav-link[aria-current="page"] .icon-nav-label {
-    max-width: 8em;
-    margin-left: 0.4em;
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  /* Two lines of icons, each line still a single line that a label can open
-     into: the second group of cells gets a box of its own, and the row stacks.
-     The width the fit test measured is what each of these lines has, so a label
-     opening eats slack rather than wrapping a link onto a third line. */
-  html.nav-two-rows .icon-nav {
-    flex-direction: column;
-    flex-wrap: nowrap;
-    row-gap: 0.5rem;
-    /* Both lines start at the same x. Centred lines read as one row that has
-       been nudged sideways, which is not what two lines of icons are. */
-    align-items: flex-start;
-  }
-
-  html.nav-two-rows .icon-nav-line {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
-    column-gap: inherit;
-  }
-
-  /* The fit test's one measuring pass, with every label open so the widest the
-     row could ever be can be summed. It is added and taken off again inside a
-     single frame, so none of it is ever painted — `!important` because the
-     hover rules above would otherwise win on specificity for whichever link
-     the pointer happens to be resting on while a window is dragged. */
-  html.nav-measuring .icon-nav-label {
-    max-width: none !important;
-    margin-left: 0.4em !important;
-    opacity: 0 !important;
-    transform: none !important;
-    transition: none !important;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -376,37 +318,16 @@ button:not(:disabled):active {
   }
 }
 
-/* Crossing a breakpoint swaps one shape of the page for the other, which is a
-   jump. `src/lib/layout-flip.ts` eases every element across instead — and this is
-   the other half of that: while it does, the labels must not animate on their
-   own. Two motions at once fight each other, and the label's own transition
-   would also defeat the measurement the flip is based on. Every other element
-   with a transition of its own is held still from the script, since only it
-   knows which elements those are. */
-.layout-flip .icon-nav-label {
-  transition: none !important;
-}
+/* There is deliberately nothing here about hover, width or pointer type. The
+   row used to collapse its labels behind its icons on a laptop and open them on
+   hover, which took a measuring pass on every resize (`src/lib/nav-fit.ts`, and
+   the two shape classes it set) to work out whether the labels would still fit
+   inside the page's text column. The row wraps now, so the question answers
+   itself in CSS and the whole apparatus is gone. */
 
-/* The other half of the fit test. Measuring the row means opening every label
-   for a frame and putting it back (`nav-measuring`), and the putting-back is a
-   style change to a label whose transition is enabled again the moment that
-   class comes off — so each resize step started four transitions per label,
-   and dragging a window made the header's text re-animate continuously even
-   when nothing about the layout had changed. `src/lib/nav-fit.ts` adds this for
-   the length of the fit and takes it off in the next frame, so the measurement's
-   own changes are never animated.
-
-   A frame, not a task: the class has to still be on when the styles it is
-   muting are put back, and coming off afterwards cannot start anything, since
-   no label's styles change in that frame. */
-html.nav-fitting .icon-nav-label {
-  transition: none !important;
-}
-
-/* The admin panel's nav sits on a plain background where an icon alone can
-   read as ambiguous, so links there sit at full opacity and the current
-   section's label stays open with an underline instead. "Dashboard" is its
-   longest label and the nav runs at text-lg. */
+/* The admin panel's nav sits on a plain background where an icon alone can read
+   as ambiguous, so the current section is underlined as well as marked with
+   `aria-current`. "Dashboard" is its longest label and the nav runs at text-lg. */
 .icon-nav-admin .icon-nav-link {
   opacity: 1;
 }

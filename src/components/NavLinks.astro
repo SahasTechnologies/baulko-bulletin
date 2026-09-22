@@ -23,47 +23,34 @@ const currentPath = Astro.url.pathname.replace(/\/+$/, "") || "/";
 
 const isActive = (href: string) =>
   href === "/" ? currentPath === "/" : currentPath === href || currentPath.startsWith(`${href}/`);
-
-/**
- * The links in two groups, which is the full extent of what a second line is:
- * every layout other than `nav-two-rows` puts them back in one flow. The split
- * is fixed rather than measured, since every cell is an icon wide and only the
- * labels differ.
- */
-const linkLines = [links.slice(0, 5), links.slice(5)];
 ---
 
+{/* One run of cells, written flat: the row is a plain wrapping flex line, so it
+    spills onto a second line wherever it runs out of room and nothing has to
+    decide which cells go where. Every link shows its icon beside its name at
+    every width — see the `.icon-nav` rules in global.css for why. */}
 <nav class:list={["icon-nav text-xl font-medium", extraClass]}>
   {
-    /* The wrappers carry no box unless `nav-two-rows` gives them one, so the
-       cells flow together for every other shape. See src/lib/nav-fit.ts. */
-    linkLines.map((line, lineIndex) => (
-      <div class="icon-nav-line">
-        {line.map((link) => (
-          <div class="icon-nav-item">
-            <a
-              href={link.href}
-              aria-current={isActive(link.href) ? "page" : undefined}
-              class="icon-nav-link"
-            >
-              <Icon name={link.icon} />
-              <span class="icon-nav-label">{link.label}</span>
-            </a>
-          </div>
-        ))}
-        {/* The switch rides with the last link, the way it always has. */}
-        {lineIndex === linkLines.length - 1 && (
-          <div class="icon-nav-item">
-            <ThemeToggle client:load />
-          </div>
-        )}
+    links.map((link) => (
+      <div class="icon-nav-item">
+        <a
+          href={link.href}
+          aria-current={isActive(link.href) ? "page" : undefined}
+          class="icon-nav-link"
+        >
+          <Icon name={link.icon} />
+          <span class="icon-nav-label">{link.label}</span>
+        </a>
       </div>
     ))
   }
+  {/* The switch rides at the end of the row, the way it always has. */}
+  <div class="icon-nav-item">
+    <ThemeToggle client:load />
+  </div>
 </nav>
 
-{/* Easing the page between the shapes it takes at different widths is the
-    layout's business — src/lib/layout-flip.ts, started from BaseLayout — and
-    this row is one of the things it eases. What the row still decides for
-    itself, in src/lib/nav-fit.ts, is whether its icons fit on one line, need
-    two, or have to give up on hiding their labels. */}
+{/* Nothing here has to be measured or re-arranged on a resize any more. The row
+    still takes part in `src/lib/layout-flip.ts` — it is a row like any other,
+    and eases across a breakpoint with the rest of the page — but it no longer
+    has a shape of its own for the flip to watch for. */}

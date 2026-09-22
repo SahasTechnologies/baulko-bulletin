@@ -26,9 +26,10 @@ const extras = await getAllExtras(5);
       </h1>
       {/* This column carries a width of its own at every size — as wide as the
           page on the narrow layout, a fixed measure beside the title once it
-          sits in a row. A column that says how wide it is cannot be resized by
-          the nav inside it, which is what stops the description from re-wrapping
-          when a nav label slides out. */}
+          sits in a row. The nav inside it is sized by its own content and wraps
+          onto as many lines as that takes, so the width has to be the column's
+          to give: a column that let the nav decide it would re-wrap the
+          description underneath as the two traded room. */}
       <h2 class="flex w-full flex-col gap-3 text-pretty items-center mt-5 text-center text-lg lg:mt-0 lg:w-[29rem] lg:shrink-0 lg:pl-8 lg:text-left lg:items-start xl:w-[33rem]">
         <NavLinks />
         <p class="text-lg opacity-70">{settings.description}</p>

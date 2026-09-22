@@ -24,6 +24,13 @@
  * directives that cannot execute anything is the right side of that trade;
  * `script-src` stays tight.
  *
+ * `connect-src` is the one directive that cannot be loose, because it is where
+ * `fetch` and XHR go and so where anything injected would send what it read —
+ * and it is also where the issue reader's own download lands, since the PDF
+ * lives on ImageKit's CDN and not on this origin. Naming that one host is the
+ * difference between a reader that opens an issue and one that refuses a file
+ * which plainly exists; see `readerOrigin` below.
+ *
  * The policy has to name everything the site actually loads. If a future change
  * adds an embedding, a font host or an API call from the browser, it belongs in
  * the lists below — otherwise it will work in `astro dev` and fail in
@@ -40,9 +47,43 @@ const FONTS_FILES = "https://fonts.gstatic.com";
 /** ImageKit, where uploads go from the admin panel's browser. */
 const IMAGEKIT = ["https://api.imagekit.io", "https://upload.imagekit.io"];
 
+/** Where ImageKit serves the files it holds, when no endpoint says otherwise. */
+const IMAGEKIT_CDN = "https://ik.imagekit.io";
+
+/**
+ * The origin the issue reader fetches a PDF from.
+ *
+ * The reader downloads the whole file with `fetch` before pdf.js sees it (see
+ * `components/ui/PdfViewer.tsx`), and `connect-src` is what judges that request
+ * — not `media-src`, which is why a loose `media-src` never covered it. Without
+ * the host named here the reader answers "Could not open this issue" for every
+ * issue on the site, while the same URL opened by hand works perfectly, because
+ * a top-level navigation is not a `connect-src` request at all.
+ *
+ * Read from `IMAGEKIT_URL_ENDPOINT` rather than hardcoded, so an endpoint moved
+ * to a custom domain moves the policy with it. A value that is empty or not a
+ * URL falls back to ImageKit's own CDN, which is what the panel uploads to when
+ * nothing has been configured.
+ */
+export function readerOrigin(urlEndpoint?: string): string {
+  if (!urlEndpoint) return IMAGEKIT_CDN;
+  try {
+    return new URL(urlEndpoint).origin;
+  } catch {
+    return IMAGEKIT_CDN;
+  }
+}
+
 export interface PolicyOptions {
   /** Adds the origins the admin's own uploader needs. */
   admin?: boolean;
+  /**
+   * The origin the issue reader downloads from — pass `readerOrigin(…)` of the
+   * configured `IMAGEKIT_URL_ENDPOINT`. Passed in rather than read here so this
+   * stays a pure function of its options, and so a test does not depend on what
+   * happens to be configured on the machine running it.
+   */
+  reader?: string;
   /**
    * Relaxes the two directives the development server itself needs: Vite's HMR
    * channel is a websocket, and its dev tooling is allowed `eval`. Nothing else
@@ -65,7 +106,14 @@ export interface PolicyOptions {
  * string literal so it can be asserted in tests directive by directive.
  */
 export function contentSecurityPolicy(options: PolicyOptions = {}): string {
-  const connect = ["'self'", TURNSTILE, ...(options.admin ? IMAGEKIT : []), ...(options.dev ? ["ws:"] : [])];
+  const connect = [
+    "'self'",
+    TURNSTILE,
+    // The reader's own download of an issue, on every page that shows one.
+    options.reader || IMAGEKIT_CDN,
+    ...(options.admin ? IMAGEKIT : []),
+    ...(options.dev ? ["ws:"] : []),
+  ];
   const directives: Array<[string, string[]]> = [
     ["default-src", ["'self'"]],
     // The inline script in the head that avoids a theme flash, and the inline

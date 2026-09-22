@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applySecurityHeaders, contentSecurityPolicy, securityHeaders } from "./security-headers.ts";
+import { applySecurityHeaders, contentSecurityPolicy, readerOrigin, securityHeaders } from "./security-headers.ts";
 
 /** Named here so the assertions read as intent rather than as a URL. */
 const TURNSTILE_HOST = "https://challenges.cloudflare.com";
@@ -44,6 +44,32 @@ test("contentSecurityPolicy only lets the admin talk to ImageKit", () => {
   assert.ok(admin.includes("https://upload.imagekit.io"));
   assert.ok(admin.includes("https://api.imagekit.io"));
   assert.ok(admin.includes("'self'"));
+});
+
+test("contentSecurityPolicy lets the reader fetch an issue, on every page", () => {
+  // The reader downloads the PDF itself, so this is a `connect-src` host. Left
+  // out, every issue fails to open in the reader while its own URL works when
+  // opened by hand — which is the bug this directive is here to prevent.
+  for (const admin of [false, true]) {
+    const connect = directive(contentSecurityPolicy({ admin }), "connect-src") ?? [];
+    assert.ok(connect.includes("https://ik.imagekit.io"), `admin: ${admin}`);
+  }
+});
+
+test("readerOrigin follows the configured endpoint, and falls back to ImageKit's CDN", () => {
+  // The origin, not the URL: a policy names hosts, and an endpoint that carries
+  // an account path must not turn into one.
+  assert.equal(readerOrigin("https://ik.imagekit.io/sahas"), "https://ik.imagekit.io");
+  assert.equal(readerOrigin("https://media.example.com/bulletin/"), "https://media.example.com");
+  // A custom endpoint moves the policy with it, rather than leaving it pointing
+  // at a host nothing is served from any more.
+  const connect =
+    directive(contentSecurityPolicy({ reader: readerOrigin("https://media.example.com/x") }), "connect-src") ?? [];
+  assert.ok(connect.includes("https://media.example.com"));
+  // Unset, empty, or nonsense is not a reason to break the reader.
+  for (const value of [undefined, "", "   ", "not a url"]) {
+    assert.equal(readerOrigin(value), "https://ik.imagekit.io", JSON.stringify(value));
+  }
 });
 
 test("contentSecurityPolicy emits each directive once, as a single header value", () => {
