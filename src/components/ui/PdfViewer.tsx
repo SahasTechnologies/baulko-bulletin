@@ -245,13 +245,6 @@ const MAX_CACHED_PAGES = 16;
 const MAX_CACHE_BYTES = 120 * 1024 * 1024;
 
 /**
- * Priority pages that must be rendered before the reader is shown, so the first
- * flips after the wait are instant rather than the wait merely hiding the
- * first page's render.
- */
-const WARM_PAGES = 4;
-
-/**
  * Past this, holding the whole file in memory is the wrong trade.
  */
 const FULL_DOWNLOAD_LIMIT = 40 * 1024 * 1024;
@@ -725,16 +718,16 @@ export default function PdfViewer({
     }
     setPending(!complete);
 
-    // The reader is shown once a few pages are rendered, not merely the visible
-    // ones: the point of the wait is that the next flips are already
-    // rasterized. WARM_PAGES counts entries from the priority list (a spread is
-    // two of them), and a document with nothing left to warm — the last page,
-    // or a short issue — opens as soon as it is on screen.
-    const wanted = priorityRef.current;
-    const rendered = wanted.filter((p) => cacheRef.current.has(p)).length;
-    const target = Math.min(wanted.length, WARM_PAGES) || 1;
-    setWarmth(Math.min(1, rendered / target));
-    if (complete && rendered >= target) setReady(true);
+    // The reader opens as soon as the spread being read is on screen. It used to
+    // wait for several pages ahead as well, which meant the opening wait was
+    // the time to draw four pages — the slowest of them, on an issue with dense
+    // puzzle pages, set the whole wait. The pages ahead are still drawn, in
+    // priority order straight after these, and a turn to one that is not ready
+    // yet keeps the current spread on screen until it is (see above), so
+    // opening sooner costs a flip nothing visible.
+    const rendered = visible.filter((p) => cacheRef.current.has(p)).length;
+    setWarmth(visible.length ? Math.min(1, rendered / visible.length) : 0);
+    if (complete) setReady(true);
   }, [pdf, page, numPages, spread, stageW, tick]);
 
   // A spinner only for a wait that is long enough to notice.
@@ -970,7 +963,7 @@ export default function PdfViewer({
                     ? ` of ${megabytes(incoming.total)}`
                     : ""
                 }`
-              : "Preparing pages…"}
+              : "Drawing the first pages…"}
           </p>
           {coverUrl ? (
             /* The issue's own cover, standing where the progress bar was: the
