@@ -357,6 +357,11 @@ function grew(record: MutationRecord): boolean {
     // the elements inside that island are the flip's to move from now on.
     return record.target instanceof Element && !record.target.matches(PENDING);
   }
+  // Somewhere that has opted out (the issue reader swaps whole canvases and text
+  // layers on every page turn) is not the page's layout changing, and walking the
+  // page for it made each turn of a page do a full reading in the middle of the
+  // reader's own work.
+  if (record.target instanceof Element && record.target.closest(OFF)) return false;
   for (const node of record.addedNodes) if (node.nodeType === Node.ELEMENT_NODE) return true;
   for (const node of record.removedNodes) if (node.nodeType === Node.ELEMENT_NODE) return true;
   return false;

@@ -223,7 +223,15 @@ async function downloadPdf(
   return data;
 }
 
-type CachedPage = { canvas: HTMLCanvasElement; text: HTMLDivElement; bytes: number };
+type CachedPage = {
+  canvas: HTMLCanvasElement;
+  text: HTMLDivElement;
+  bytes: number;
+  /** Height in CSS px, so the stage can hold the tallest page it has shown. */
+  cssH: number;
+  /** Builds the selectable text on demand; resolves once, however often called. */
+  fillText: () => Promise<void>;
+};
 
 /**
  * How far ahead of the reader to keep pages rasterized. These are about canvas
@@ -300,11 +308,25 @@ export default function PdfViewer({
   const priorityRef = useRef<number[]>([]);
   // Wakes the parked loop when the priority list changes.
   const nudgeRef = useRef<() => void>(() => {});
+  // The stage keeps the height of the tallest spread shown at this scale, so a
+  // page of a different shape (a puzzle page, say) cannot make the controls
+  // below it jump. Reset whenever the scale context changes.
+  const stageHeightRef = useRef(0);
+  const stageBoxRef = useRef<HTMLDivElement>(null);
+
+  // Read by the render loop, which outlives any one render of this component.
+  const pageRef = useRef(1);
+  // The pages actually on screen: the previous spread stays until the next one
+  // is completely ready, so a turn is one swap rather than a page at a time.
+  const shownRef = useRef<number[]>([]);
 
   const [pdf, setPdf] = useState<any>(null);
   const [page, setPage] = useState(1);
   const [numPages, setNumPages] = useState(0);
   const [spread, setSpread] = useState(false);
+  // Whether the wait on the next spread has been long enough to be worth a
+  // spinner; a turn that lands in a few frames shows none.
+  const [slow, setSlow] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   // True once the first spread has been mounted — the loader hides then, and
@@ -461,7 +483,17 @@ export default function PdfViewer({
 
     priorityRef.current = wanted;
     const inFlight = inFlightRef.current;
-    if (inFlight && !wanted.includes(inFlight.page)) inFlight.cancel();
+    if (inFlight) {
+      // Work that is no longer wanted goes. So does lookahead work that is
+      // holding up a page the reader is waiting on: one slow page (a dense
+      // puzzle) rendering a few spreads ahead used to make the page actually
+      // being turned to wait for it.
+      const visible = spreadPages(page, numPages, spread);
+      const blocked = visible.some((v) => !cacheRef.current.has(v));
+      if (!wanted.includes(inFlight.page) || (blocked && !visible.includes(inFlight.page))) {
+        inFlight.cancel();
+      }
+    }
     nudgeRef.current();
   }, [page, numPages, spread]);
 
@@ -473,6 +505,8 @@ export default function PdfViewer({
     if (!pdf || !stageW || !viewportH || !pdfjsRef.current) return;
     const gen = ++genRef.current;
     cacheRef.current.clear();
+    stageHeightRef.current = 0;
+    if (stageBoxRef.current) stageBoxRef.current.style.minHeight = "";
 
     // The fit is against the height available, which fullscreen changes — hence
     // `viewportH` in the dependency list below, since a height change is the
@@ -530,10 +564,13 @@ export default function PdfViewer({
       }
       if (genRef.current !== gen) return;
 
-      // Transparent, selectable text over the canvas. TextLayer positions the
-      // spans itself; the scale inputs it cannot know are set here (see the
-      // .pdfTextLayer rules in global.css). It multiplies the scale by the
-      // device ratio internally, so this viewport is the CSS-scale one.
+      // Transparent, selectable text over the canvas. Building it is DOM-heavy
+      // (a puzzle page is hundreds of tiny spans), so it is not part of getting
+      // the page ready: the loop only rasterizes, and the text is filled in once
+      // the page is on screen, where nothing is waiting on it. TextLayer
+      // positions the spans itself; the scale inputs it cannot know are set
+      // here (see the .pdfTextLayer rules in global.css). It multiplies the
+      // scale by the device ratio internally, so this viewport is the CSS one.
       const cssViewport = pdfPage.getViewport({ scale: fit });
       const text = document.createElement("div");
       text.className = "pdfTextLayer";
@@ -541,33 +578,34 @@ export default function PdfViewer({
       if (cssViewport.userUnit && cssViewport.userUnit !== 1) {
         text.style.setProperty("--user-unit", String(cssViewport.userUnit));
       }
-      const layer = new pdfjs.TextLayer({
-        textContentSource: pdfPage.streamTextContent(),
-        container: text,
-        viewport: cssViewport,
-      });
-      inFlightRef.current = { page: p, cancel: () => layer.cancel() };
-      try {
-        await layer.render();
-      } finally {
-        if (inFlightRef.current?.page === p) inFlightRef.current = null;
-      }
-      if (genRef.current !== gen) return;
-
-      // Like pdf.js's own viewer: a filler below the last line, combined with
-      // the "selecting" class, lets a drag past the end of the page extend the
-      // selection to the end instead of collapsing. The class is toggled by
-      // the document-wide listener below; mousedown adds it up front so the
-      // very first drag already behaves.
-      const end = document.createElement("div");
-      end.className = "endOfContent";
-      text.append(end);
-      text.addEventListener("mousedown", () => text.classList.add("selecting"));
+      let filling: Promise<void> | null = null;
+      const fillText = () =>
+        (filling ??= (async () => {
+          try {
+            const layer = new pdfjs.TextLayer({
+              textContentSource: pdfPage.streamTextContent(),
+              container: text,
+              viewport: cssViewport,
+            });
+            await layer.render();
+            // Like pdf.js's own viewer: a filler below the last line, combined
+            // with the "selecting" class, lets a drag past the end of the page
+            // extend the selection to the end instead of collapsing.
+            const end = document.createElement("div");
+            end.className = "endOfContent";
+            text.append(end);
+            text.addEventListener("mousedown", () => text.classList.add("selecting"));
+          } catch (err) {
+            if (!isCancellation(err)) console.warn("[pdf] text layer failed:", err);
+          }
+        })());
 
       cacheRef.current.set(p, {
         canvas,
         text,
         bytes: canvas.width * canvas.height * 4,
+        cssH,
+        fillText,
       });
 
       // Bound memory. Pages that fell out of the priority list go first, then
@@ -575,10 +613,16 @@ export default function PdfViewer({
       // and never a page that has just landed or one of the last two left.
       // Anything evicted re-renders on demand if the reader comes back to it.
       const keep = new Set(priorityRef.current);
+      // The spread on screen and the one being turned to are never evicted: if
+      // the budget is too small for the lookahead, the lookahead shrinks (below)
+      // rather than pages being dropped and rendered again in a loop.
+      const essential = new Set<number>();
+      for (const q of spreadPages(pageRef.current, numPages, spread)) essential.add(q);
+      for (const q of shownRef.current) essential.add(q);
       const order = [
         ...[...cacheRef.current.keys()].filter((key) => !keep.has(key)),
         ...[...keep].reverse(),
-      ];
+      ].filter((key) => !essential.has(key));
       let held = 0;
       for (const entry of cacheRef.current.values()) held += entry.bytes;
       for (const victim of order) {
@@ -593,8 +637,18 @@ export default function PdfViewer({
 
     (async () => {
       while (genRef.current === gen) {
+        let held = 0;
+        for (const entry of cacheRef.current.values()) held += entry.bytes;
+        const overBudget =
+          held >= MAX_CACHE_BYTES || cacheRef.current.size >= MAX_CACHED_PAGES;
+        const visibleNow = spreadPages(pageRef.current, numPages, spread);
         const target = priorityRef.current.find(
-          (p) => !cacheRef.current.has(p) && (attempts.get(p) ?? 0) < 2
+          (p) =>
+            !cacheRef.current.has(p) &&
+            (attempts.get(p) ?? 0) < 2 &&
+            // Past the budget only what is on screen is rendered; lookahead
+            // waits for room rather than evicting and re-rendering.
+            (!overBudget || visibleNow.includes(p))
         );
         if (target == null) {
           await waitForNudge();
@@ -623,30 +677,53 @@ export default function PdfViewer({
     };
   }, [pdf, spread, stageW, viewportH, numPages]);
 
-  // Mount whichever visible pages are already rendered. If one is still
-  // rendering, whatever was on screen stays there (no flash on resize or
-  // spread toggle); only a slot with nothing to show gets the overlay.
+  // Put a spread on screen — all of it at once, or not at all.
+  //
+  // This used to mount each page the moment it landed, and leave the previous
+  // page in any slot whose page was still rendering. Turning to a spread whose
+  // pages took different times (a dense puzzle page beside a light one) then
+  // showed one new page next to one old one, a cover left full-width beside a
+  // spinner, and a stage that changed shape under the controls. Now the spread
+  // being read stays exactly as it is until every page of the next one is
+  // rendered, then they swap in the same frame.
   useEffect(() => {
+    pageRef.current = page;
     if (!pdf || !stageW) return;
     const visible = spreadPages(page, numPages, spread);
     const slots = [leftWrapRef.current, rightWrapRef.current];
-    let missing = false;
-    let blank = false;
-    for (let i = 0; i < 2; i++) {
-      const p = visible[i];
-      const slot = slots[i];
-      if (p == null || !slot) continue;
-      const hit = cacheRef.current.get(p);
-      if (hit) {
-        if (slot.firstElementChild !== hit.canvas) {
-          slot.replaceChildren(hit.canvas, hit.text);
+    const entries = visible.map((p) => cacheRef.current.get(p));
+    const complete = entries.every(Boolean);
+
+    if (complete) {
+      const same =
+        shownRef.current.length === visible.length &&
+        visible.every((_, i) => slots[i]?.firstElementChild === entries[i]!.canvas);
+      if (!same) {
+        visible.forEach((_, i) => {
+          const slot = slots[i];
+          const entry = entries[i]!;
+          if (slot) slot.replaceChildren(entry.canvas, entry.text);
+        });
+        // The slots are always in the tree; how many are used, and their
+        // corners, are set here with the pages so nothing about the layout is
+        // ever half-way between two spreads.
+        const [left, right] = slots;
+        if (right) right.style.display = visible.length === 2 ? "" : "none";
+        if (left) left.style.borderRadius = visible.length === 2 ? "4px 0 0 4px" : "4px";
+        if (right && visible.length === 2) right.style.borderRadius = "0 4px 4px 0";
+        shownRef.current = visible;
+        // Hold the tallest height seen so far, so a shorter or taller page does
+        // not move the controls under it.
+        const tallest = Math.max(...entries.map((e) => e!.cssH));
+        if (tallest > stageHeightRef.current) stageHeightRef.current = tallest;
+        if (stageBoxRef.current) {
+          stageBoxRef.current.style.minHeight = `${Math.ceil(stageHeightRef.current)}px`;
         }
-      } else {
-        missing = true;
-        if (slot.childElementCount === 0) blank = true;
       }
+      // Selectable text is built now that the pages are showing.
+      for (const entry of entries) void entry!.fillText();
     }
-    setPending(blank);
+    setPending(!complete);
 
     // The reader is shown once a few pages are rendered, not merely the visible
     // ones: the point of the wait is that the next flips are already
@@ -657,8 +734,18 @@ export default function PdfViewer({
     const rendered = wanted.filter((p) => cacheRef.current.has(p)).length;
     const target = Math.min(wanted.length, WARM_PAGES) || 1;
     setWarmth(Math.min(1, rendered / target));
-    if (!missing && rendered >= target) setReady(true);
+    if (complete && rendered >= target) setReady(true);
   }, [pdf, page, numPages, spread, stageW, tick]);
+
+  // A spinner only for a wait that is long enough to notice.
+  useEffect(() => {
+    if (!pending) {
+      setSlow(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setSlow(true), 250);
+    return () => window.clearTimeout(timer);
+  }, [pending]);
 
   // The opening wait is a gate, not a prison: if the warm-up has not finished
   // within READY_TIMEOUT_MS, show the reader anyway and let the loop keep
@@ -967,23 +1054,21 @@ export default function PdfViewer({
       <div ref={stageRef} className="h-0 w-full" aria-hidden="true" />
 
       <div className={loading || error || !ready ? "hidden" : ""}>
-        <div className="relative flex items-center justify-center overflow-hidden">
+        {/* data-flip="off": the page-wide layout easing has nothing to do in
+            here, and a page turn is not a layout change for it to read. */}
+        <div
+          ref={stageBoxRef}
+          data-flip="off"
+          className="relative flex items-center justify-center overflow-hidden"
+        >
           {/* The canvases and text layers are created by the render loop and
-              moved in here when ready; the slots only own chrome (shadow,
-              rounded corners). */}
-          <div
-            ref={leftWrapRef}
-            className={pageSlot}
-            style={{ borderRadius: pages.length === 1 ? "4px" : "4px 0 0 4px" }}
-          />
-          {pages.length === 2 && (
-            <div
-              ref={rightWrapRef}
-              className={pageSlot}
-              style={{ borderRadius: "0 4px 4px 0" }}
-            />
-          )}
-          {pending && (
+              moved in here when a whole spread is ready; the slots only own
+              chrome (shadow, rounded corners). Both are always present — the
+              second is hidden for a single page — so a turn never adds or
+              removes a box. */}
+          <div ref={leftWrapRef} className={pageSlot} />
+          <div ref={rightWrapRef} className={pageSlot} style={{ display: "none" }} />
+          {pending && slow && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
               <span className="pdfSpinner" style={{ width: 28, height: 28 }} aria-hidden="true" />
             </div>
